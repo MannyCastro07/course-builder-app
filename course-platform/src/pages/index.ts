@@ -1,0 +1,9 @@
+export { Login } from './Login';
+export { Register } from './Register';
+export { Dashboard } from './Dashboard';
+export { Courses } from './Courses';
+export { CourseEditor } from './CourseEditor';
+export { CreateCourseWizard } from './CreateCourseWizard';
+export { Students } from './Students';
+export { Reports } from './Reports';
+export { Settings } from './Settings';
