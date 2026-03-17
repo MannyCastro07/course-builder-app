@@ -1,10 +1,10 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { 
-  Button, 
-  Card, 
-  Input, 
-  Label, 
+import {
+  Button,
+  Card,
+  Input,
+  Label,
   Textarea,
   RadioGroup,
   RadioGroupItem,
@@ -13,26 +13,27 @@ import {
   TabsList,
   TabsTrigger,
 } from '@/components/ui';
-import { 
-  ChevronRight, 
-  ChevronLeft, 
-  Check, 
-  Globe, 
-  Lock, 
-  Clock, 
-  Layout, 
+import {
+  ChevronRight,
+  ChevronLeft,
+  Check,
+  Globe,
+  Lock,
+  Clock,
+  Layout,
   Users,
   Link as LinkIcon,
   BookOpen,
   Loader2,
-  Upload
+  Upload,
 } from 'lucide-react';
 import { cn, slugify } from '@/utils';
 import { useCourses } from '@/hooks';
 import { showErrorToast } from '@/stores';
-import { supabase } from '@/lib/supabase';
 import { FileUpload } from '@/components/common/FileUpload';
 import { courseService } from '@/services/courseService';
+import { storageService, type UploadResult } from '@/services/storageService';
+import { createAttachmentFromUpload } from '@/utils/lessonContent';
 
 const steps = [
   { id: 1, title: 'Basic Info', icon: BookOpen },
@@ -60,106 +61,107 @@ export function CreateCourseWizard() {
   const [isCheckingSlug, setIsCheckingSlug] = useState(false);
   const [slugError, setSlugError] = useState<string | null>(null);
   const [slugValid, setSlugValid] = useState(false);
-  
-  // File upload state
+
   const [uploadedFiles, setUploadedFiles] = useState<{
-    pdfs: { url: string; name: string; type: string }[];
-    images: { url: string; name: string; type: string }[];
-    video: { url: string; name: string; type: string } | null;
+    pdfs: UploadResult[];
+    documents: UploadResult[];
+    images: UploadResult[];
+    video: UploadResult | null;
   }>({
     pdfs: [],
+    documents: [],
     images: [],
     video: null,
   });
   const [externalVideoUrl, setExternalVideoUrl] = useState('');
 
-  // Auto-generate slug from title
   useEffect(() => {
-    if (!slugModified && formData.title) {
-      setFormData(prev => ({ ...prev, slug: slugify(prev.title) }));
+    if (!formData.title) {
+      setFormData((prev) => ({ ...prev, slug: '' }));
+      setSlugValid(false);
+      setSlugError(null);
+      return;
+    }
+
+    if (!slugModified) {
+      const generatedSlug = slugify(formData.title);
+      setFormData((prev) => prev.slug === generatedSlug ? prev : { ...prev, slug: generatedSlug });
     }
   }, [formData.title, slugModified]);
 
-  // Check slug uniqueness
   const checkSlugUniqueness = useCallback(async (slug: string) => {
     if (!slug || slug.length < 2) {
-      setSlugError('Slug must be at least 2 characters');
+      setSlugError('Course URL must be at least 2 characters.');
       setSlugValid(false);
       return;
     }
-    
+
     setIsCheckingSlug(true);
     setSlugError(null);
-    
+
     try {
-      const { data, error } = await supabase
-        .from('courses')
-        .select('id')
-        .eq('slug', slug)
-        .maybeSingle();
-      
-      if (error) throw error;
-      
-      if (data) {
-        setSlugError('This URL is already taken. Please choose another.');
+      const isAvailable = await courseService.isSlugAvailable(slug);
+      if (!isAvailable) {
+        setSlugError('This course URL is already in use. Choose another one.');
         setSlugValid(false);
       } else {
         setSlugError(null);
         setSlugValid(true);
       }
-    } catch (err) {
-      setSlugError('Error checking URL availability');
+    } catch {
+      setSlugError('Could not verify course URL availability. Try again.');
       setSlugValid(false);
     } finally {
       setIsCheckingSlug(false);
     }
   }, []);
 
-  // Debounced slug check
   useEffect(() => {
-    if (formData.slug && slugModified) {
-      const timer = setTimeout(() => {
-        checkSlugUniqueness(formData.slug);
-      }, 500);
-      return () => clearTimeout(timer);
+    if (!formData.slug) {
+      setSlugValid(false);
+      setSlugError(null);
+      return;
     }
-  }, [formData.slug, slugModified, checkSlugUniqueness]);
+
+    const timer = setTimeout(() => {
+      checkSlugUniqueness(formData.slug);
+    }, 350);
+
+    return () => clearTimeout(timer);
+  }, [formData.slug, checkSlugUniqueness]);
 
   const handleNext = async () => {
     if (currentStep < steps.length) {
-      if (currentStep === 1 && !formData.title) {
-        showErrorToast('Validation Error', 'Course title is required');
+      if (currentStep === 1 && !formData.title.trim()) {
+        showErrorToast('Validation error', 'Course title is required.');
         return;
       }
       if (currentStep === 2) {
         if (!formData.slug) {
-          showErrorToast('Validation Error', 'Course URL is required');
+          showErrorToast('Validation error', 'Course URL is required.');
           return;
         }
-        if (slugError || !slugValid) {
-          showErrorToast('Validation Error', 'Please fix the URL before continuing');
+        if (isCheckingSlug || slugError || !slugValid) {
+          showErrorToast('Validation error', 'Please use an available course URL before continuing.');
           return;
         }
       }
-      setCurrentStep(prev => prev + 1);
+      setCurrentStep((prev) => prev + 1);
     } else {
       await handleFinish();
     }
   };
 
   const handleBack = () => {
-    if (currentStep > 1) {
-      setCurrentStep(prev => prev - 1);
-    }
+    if (currentStep > 1) setCurrentStep((prev) => prev - 1);
   };
 
   const handleFinish = async () => {
     try {
-      // Final validation
-      if (!formData.title) throw new Error('Title is required');
-      if (!formData.slug) throw new Error('Slug is required');
+      if (!formData.title.trim()) throw new Error('Course title is required.');
+      if (!formData.slug.trim()) throw new Error('Course URL is required.');
+      if (!slugValid) throw new Error('Please use an available course URL.');
 
-      // 1. Create course
       const course = await createCourse({
         title: formData.title,
         description: formData.description,
@@ -171,59 +173,77 @@ export function CreateCourseWizard() {
         afterPurchase: {
           type: 'afterlogin',
           navigationType: 'global',
-          settings: { url: '', page: '' }
-        }
+          settings: { url: '', page: '' },
+        },
       });
 
-      if (!course?.id) {
-        throw new Error('Failed to create course');
+      if (!course?.id) throw new Error('Failed to create course.');
+
+      const section = await courseService.createSection(course.id, { title: 'Module 1', order: 1 });
+
+      const finalizedPdfs = uploadedFiles.pdfs.length > 0
+        ? await storageService.finalizeUploads(uploadedFiles.pdfs, course.id)
+        : [];
+      const finalizedDocuments = uploadedFiles.documents.length > 0
+        ? await storageService.finalizeUploads(uploadedFiles.documents, course.id)
+        : [];
+      const finalizedImages = uploadedFiles.images.length > 0
+        ? await storageService.finalizeUploads(uploadedFiles.images, course.id)
+        : [];
+      const finalizedVideo = uploadedFiles.video
+        ? (await storageService.finalizeUploads([uploadedFiles.video], course.id))[0]
+        : null;
+
+      let lessonOrder = 1;
+
+      for (const file of finalizedPdfs) {
+        await courseService.createLesson(course.id, section.id, {
+          title: file.name,
+          description: `PDF reference: ${file.name}`,
+          type: 'pdf',
+          attachments: [createAttachmentFromUpload(file)],
+          content: { type: 'file', data: '' },
+          order: lessonOrder++,
+        });
       }
 
-      // 2. Create section "Module 1"
-      const section = await courseService.createSection(course.id, {
-        title: 'Module 1',
-        order: 1
-      });
-
-      // 3. Create lessons from uploaded files
-      const lessons = [];
-
-      // PDF lessons
-      for (const pdf of uploadedFiles.pdfs || []) {
-        lessons.push(await courseService.createLesson(course.id, section.id, {
-          title: pdf.name,
+      for (const file of finalizedDocuments) {
+        await courseService.createLesson(course.id, section.id, {
+          title: file.name,
+          description: `Download ${file.name}`,
           type: 'download',
-          content: { type: 'rich-text', data: `Download: ${pdf.url}` },
-          order: lessons.length + 1
-        }));
+          attachments: [createAttachmentFromUpload(file)],
+          content: { type: 'file', data: '' },
+          order: lessonOrder++,
+        });
       }
 
-      // Image lessons
-      for (const img of uploadedFiles.images || []) {
-        lessons.push(await courseService.createLesson(course.id, section.id, {
-          title: img.name,
-          type: 'download',
-          content: { type: 'rich-text', data: `Image: ${img.url}` },
-          order: lessons.length + 1
-        }));
+      if (finalizedImages.length > 0) {
+        await courseService.createLesson(course.id, section.id, {
+          title: finalizedImages.length === 1 ? finalizedImages[0].name : 'Image Gallery',
+          description: 'Uploaded image resources',
+          type: 'image',
+          attachments: finalizedImages.map((file) => createAttachmentFromUpload(file)),
+          content: { type: 'gallery', data: '' },
+          order: lessonOrder++,
+        });
       }
 
-      // Video lesson
-      const video = uploadedFiles.video;
-      if (video || externalVideoUrl) {
-        lessons.push(await courseService.createLesson(course.id, section.id, {
+      if (finalizedVideo || externalVideoUrl) {
+        await courseService.createLesson(course.id, section.id, {
           title: 'Introduction Video',
+          description: 'Course introduction video',
           type: 'video',
-          videoUrl: video?.url || externalVideoUrl,
-          content: { type: 'video', data: 'Video lesson' },
-          order: lessons.length + 1
-        }));
+          videoUrl: finalizedVideo?.url || externalVideoUrl,
+          attachments: finalizedVideo ? [createAttachmentFromUpload(finalizedVideo)] : [],
+          content: { type: 'video', data: '' },
+          order: lessonOrder++,
+        });
       }
 
-      // 4. Redirect to course editor
-      navigate(`/courses/${course.id}/edit`);
+      navigate(`/admin/courses/${course.id}/edit`);
     } catch (error: any) {
-      showErrorToast('Creation failed', error.message || 'Could not create course');
+      showErrorToast('Creation failed', error.message || 'Could not create course.');
     }
   };
 
@@ -234,7 +254,7 @@ export function CreateCourseWizard() {
           <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
             <div className="space-y-2">
               <Label htmlFor="title" className="text-lg font-semibold">Course Title *</Label>
-              <Input 
+              <Input
                 id="title"
                 placeholder="e.g., Advanced React Patterns"
                 className="text-lg h-12"
@@ -245,7 +265,7 @@ export function CreateCourseWizard() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="description" className="text-lg font-semibold">Description</Label>
-              <Textarea 
+              <Textarea
                 id="description"
                 placeholder="What will students learn in this course?"
                 className="min-h-[120px]"
@@ -265,38 +285,33 @@ export function CreateCourseWizard() {
                 <div className="h-12 px-4 flex items-center bg-muted border border-r-0 rounded-l-md text-muted-foreground whitespace-nowrap">
                   /course/
                 </div>
-                <Input 
+                <Input
                   id="slug"
                   className={cn(
-                    "text-lg h-12 rounded-l-none",
-                    slugValid && "border-green-500 focus-visible:ring-green-500",
-                    slugError && "border-red-500 focus-visible:ring-red-500"
+                    'text-lg h-12 rounded-l-none',
+                    slugValid && 'border-green-500 focus-visible:ring-green-500',
+                    slugError && 'border-red-500 focus-visible:ring-red-500'
                   )}
                   value={formData.slug}
                   onChange={(e) => {
-                    setFormData({ ...formData, slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '') });
+                    setFormData({ ...formData, slug: slugify(e.target.value) });
                     setSlugModified(true);
                     setSlugValid(false);
+                    setSlugError(null);
                   }}
                 />
-                {isCheckingSlug && (
-                  <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-                )}
-                {!isCheckingSlug && slugValid && (
-                  <Check className="h-5 w-5 text-green-500" />
-                )}
+                {isCheckingSlug && <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />}
+                {!isCheckingSlug && slugValid && <Check className="h-5 w-5 text-green-500" />}
               </div>
               {slugError ? (
                 <p className="text-sm text-red-500">{slugError}</p>
               ) : (
-                <p className="text-sm text-muted-foreground">This will be the permanent URL for your course. Use only lowercase letters, numbers, and hyphens.</p>
+                <p className="text-sm text-muted-foreground">Use lowercase letters, numbers, and hyphens only.</p>
               )}
             </div>
             <div className="p-4 bg-muted/50 rounded-lg border border-dashed">
               <p className="text-sm font-medium text-muted-foreground mb-1">URL Preview</p>
-              <p className="text-primary font-medium">
-                {window.location.origin}/course/{formData.slug || 'your-course-slug'}
-              </p>
+              <p className="text-primary font-medium">{window.location.origin}/course/{formData.slug || 'your-course-slug'}</p>
             </div>
           </div>
         );
@@ -304,8 +319,8 @@ export function CreateCourseWizard() {
         return (
           <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
             <Label className="text-lg font-semibold">Access Level</Label>
-            <RadioGroup 
-              value={formData.access} 
+            <RadioGroup
+              value={formData.access}
               onValueChange={(val: string) => setFormData({ ...formData, access: val })}
               className="grid grid-cols-1 md:grid-cols-2 gap-4"
             >
@@ -348,13 +363,11 @@ export function CreateCourseWizard() {
                 { id: 'sales', title: 'Sales', desc: 'Optimized for conversions' },
               ].map((tpl) => (
                 <div key={tpl.id} className="relative">
-                  <div 
+                  <div
                     onClick={() => setFormData({ ...formData, coursePageTemplate: tpl.id })}
                     className={cn(
-                      "cursor-pointer border-2 rounded-xl p-6 transition-all h-full",
-                      formData.coursePageTemplate === tpl.id 
-                        ? "border-primary bg-primary/5" 
-                        : "border-border hover:border-muted-foreground/50"
+                      'cursor-pointer border-2 rounded-xl p-6 transition-all h-full',
+                      formData.coursePageTemplate === tpl.id ? 'border-primary bg-primary/5' : 'border-border hover:border-muted-foreground/50'
                     )}
                   >
                     <Layout className="h-8 w-8 text-primary mb-4" />
@@ -376,40 +389,55 @@ export function CreateCourseWizard() {
           <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
             <div className="space-y-4">
               <h3 className="text-lg font-semibold">Add Course Content</h3>
-              <p className="text-muted-foreground">Upload materials for your first module.</p>
+              <p className="text-muted-foreground">Upload starter materials for your first module.</p>
             </div>
-            
-            <Tabs defaultValue="pdf">
-              <TabsList className="grid w-full grid-cols-3">
-                <TabsTrigger value="pdf">PDFs</TabsTrigger>
+
+            <Tabs defaultValue="pdfs">
+              <TabsList className="grid w-full grid-cols-4">
+                <TabsTrigger value="pdfs">PDFs</TabsTrigger>
+                <TabsTrigger value="documents">Documents</TabsTrigger>
                 <TabsTrigger value="images">Images</TabsTrigger>
                 <TabsTrigger value="video">Video</TabsTrigger>
               </TabsList>
-              
-              <TabsContent value="pdf">
-                <FileUpload
-                  accept="pdf"
-                  multiple
-                  onUploadComplete={(files) => setUploadedFiles(prev => ({...prev, pdfs: files}))}
-                />
+
+              <TabsContent value="pdfs">
+                <div className="space-y-3">
+                  <p className="text-sm text-muted-foreground">Upload PDF files for reading materials or downloadable handouts.</p>
+                  <FileUpload
+                    accept="pdf"
+                    multiple
+                    onUploadComplete={(files) => setUploadedFiles((prev) => ({ ...prev, pdfs: files }))}
+                  />
+                </div>
               </TabsContent>
-              
+
+              <TabsContent value="documents">
+                <div className="space-y-3">
+                  <p className="text-sm text-muted-foreground">Upload DOC, DOCX, TXT, RTF, or ODT files as downloadable lesson assets.</p>
+                  <FileUpload
+                    accept="document"
+                    multiple
+                    onUploadComplete={(files) => setUploadedFiles((prev) => ({ ...prev, documents: files }))}
+                  />
+                </div>
+              </TabsContent>
+
               <TabsContent value="images">
                 <FileUpload
                   accept="image"
                   multiple
-                  onUploadComplete={(files) => setUploadedFiles(prev => ({...prev, images: files}))}
+                  onUploadComplete={(files) => setUploadedFiles((prev) => ({ ...prev, images: files }))}
                 />
               </TabsContent>
-              
+
               <TabsContent value="video">
                 <FileUpload
                   accept="video"
-                  onUploadComplete={(files) => setUploadedFiles(prev => ({...prev, video: files[0]}))}
+                  onUploadComplete={(files) => setUploadedFiles((prev) => ({ ...prev, video: files[0] || null }))}
                 />
                 <div className="mt-4">
-                  <Label>Or enter external video URL</Label>
-                  <Input 
+                  <Label>Or enter an external video URL</Label>
+                  <Input
                     placeholder="https://youtube.com/..."
                     value={externalVideoUrl}
                     onChange={(e) => setExternalVideoUrl(e.target.value)}
@@ -426,32 +454,28 @@ export function CreateCourseWizard() {
 
   return (
     <div className="max-w-4xl mx-auto py-12 px-4 min-h-[80vh] flex flex-col">
-      {/* Progress Steps */}
       <div className="mb-12">
         <div className="flex items-center justify-between relative">
           <div className="absolute top-1/2 left-0 w-full h-1 bg-muted -translate-y-1/2 -z-10" />
-          <div 
-            className="absolute top-1/2 left-0 h-1 bg-primary -translate-y-1/2 -z-10 transition-all duration-500" 
+          <div
+            className="absolute top-1/2 left-0 h-1 bg-primary -translate-y-1/2 -z-10 transition-all duration-500"
             style={{ width: `${((currentStep - 1) / (steps.length - 1)) * 100}%` }}
           />
           {steps.map((step) => (
             <div key={step.id} className="flex flex-col items-center gap-2">
-              <div 
+              <div
                 className={cn(
-                  "h-10 w-10 rounded-full flex items-center justify-center border-2 transition-all duration-300",
-                  currentStep > step.id 
-                    ? "bg-green-500 border-green-500 text-white" 
-                    : currentStep === step.id 
-                      ? "bg-primary border-primary text-white shadow-md shadow-primary/20"
-                      : "bg-background border-muted text-muted-foreground"
+                  'h-10 w-10 rounded-full flex items-center justify-center border-2 transition-all duration-300',
+                  currentStep > step.id
+                    ? 'bg-green-500 border-green-500 text-white'
+                    : currentStep === step.id
+                      ? 'bg-primary border-primary text-white shadow-md shadow-primary/20'
+                      : 'bg-background border-muted text-muted-foreground'
                 )}
               >
                 {currentStep > step.id ? <Check className="h-5 w-5" /> : <step.icon className="h-5 w-5" />}
               </div>
-              <span className={cn(
-                "text-xs font-medium",
-                currentStep >= step.id ? "text-primary" : "text-muted-foreground"
-              )}>
+              <span className={cn('text-xs font-medium', currentStep >= step.id ? 'text-primary' : 'text-muted-foreground')}>
                 {step.title}
               </span>
             </div>
@@ -459,40 +483,22 @@ export function CreateCourseWizard() {
         </div>
       </div>
 
-      {/* Header */}
       <div className="mb-8 text-center">
         <h1 className="text-3xl font-bold">Create New Course</h1>
-        <p className="text-muted-foreground mt-2">Step {currentStep} of {steps.length}: {steps[currentStep-1].title}</p>
+        <p className="text-muted-foreground mt-2">Step {currentStep} of {steps.length}: {steps[currentStep - 1].title}</p>
       </div>
 
-      {/* Form Card */}
-      <Card className="flex-1 p-8 shadow-sm">
-        {renderStep()}
-      </Card>
+      <Card className="flex-1 p-8 shadow-sm">{renderStep()}</Card>
 
-      {/* Navigation */}
       <div className="mt-8 flex items-center justify-between">
-        <Button 
-          variant="outline" 
-          onClick={handleBack} 
-          disabled={currentStep === 1 || isCreating}
-        >
+        <Button variant="outline" onClick={handleBack} disabled={currentStep === 1 || isCreating}>
           <ChevronLeft className="mr-2 h-4 w-4" />
           Back
         </Button>
 
         <div className="flex gap-3">
-          <Button 
-            variant="ghost" 
-            onClick={() => navigate('/courses')}
-            disabled={isCreating}
-          >
-            Cancel
-          </Button>
-          <Button 
-            onClick={handleNext} 
-            disabled={isCreating || (currentStep === 2 && !slugValid)}
-          >
+          <Button variant="ghost" onClick={() => navigate('/courses')} disabled={isCreating}>Cancel</Button>
+          <Button onClick={handleNext} disabled={isCreating || (currentStep === 2 && (isCheckingSlug || !slugValid))}>
             {isCreating ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />

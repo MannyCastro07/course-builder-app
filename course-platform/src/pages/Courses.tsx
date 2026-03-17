@@ -36,7 +36,7 @@ export function Courses() {
   const [page, setPage] = useState(1);
 
   React.useEffect(() => {
-    setBreadcrumbs([{ label: 'Courses', href: '/courses' }]);
+    setBreadcrumbs([{ label: 'Courses', href: '/admin/courses' }]);
   }, [setBreadcrumbs]);
 
   const { courses, total, isLoading, deleteCourse, duplicateCourse, publishCourse, unpublishCourse } = useCourses({
@@ -118,11 +118,11 @@ export function Courses() {
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => navigate(`/courses/${row.id}/edit`)}>
+            <DropdownMenuItem onClick={() => navigate(`/admin/courses/${row.id}/edit`)}>
               <Edit className="mr-2 h-4 w-4" />
               Edit
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => navigate(`/courses/${row.id}`)}>
+            <DropdownMenuItem onClick={() => navigate(`/admin/courses/${row.id}`)}>
               <Eye className="mr-2 h-4 w-4" />
               View
             </DropdownMenuItem>
@@ -163,7 +163,7 @@ export function Courses() {
           <h1 className="text-3xl font-bold">Courses</h1>
           <p className="text-muted-foreground">Manage your courses and content</p>
         </div>
-        <Button onClick={() => navigate('/courses/new')}>
+        <Button onClick={() => navigate('/admin/courses/new')}>
           <Plus className="mr-2 h-4 w-4" />
           New Course
         </Button>
@@ -234,7 +234,7 @@ export function Courses() {
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           {courses.map((course: Course) => (
-            <Card key={course.id} className="overflow-hidden group cursor-pointer" onClick={() => navigate(`/courses/${course.id}/edit`)}>
+            <Card key={course.id} className="overflow-hidden group cursor-pointer" onClick={() => navigate(`/admin/courses/${course.id}/edit`)}>
               <div className="aspect-video bg-muted relative overflow-hidden">
                 {course.thumbnail ? (
                   <img

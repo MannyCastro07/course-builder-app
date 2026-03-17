@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import type { AppRole } from '@/utils/auth';
 
 // ============================================
 // USER TYPES AND AUTHENTICATION
@@ -11,9 +12,9 @@ export interface User {
   lastName: string;
   avatar?: string;
   bio?: string;
-  role: 'admin' | 'instructor' | 'student';
-  createdAt: Date;
-  updatedAt: Date;
+  role: AppRole;
+  createdAt?: Date;
+  updatedAt?: Date;
 }
 
 export interface AuthState {
@@ -188,7 +189,7 @@ export interface Attachment {
 }
 
 // ============================================
-// TIPOS DE ESTUDIANTES Y PROGRESO
+// STUDENT TYPES AND PROGRESS
 // ============================================
 
 export interface Student {
@@ -215,7 +216,7 @@ export interface Enrollment {
 }
 
 // ============================================
-// TIPOS DE EDITOR DRAG-AND-DROP
+// EDITOR TYPES
 // ============================================
 
 export interface DraggableItem {
@@ -231,7 +232,7 @@ export interface PageComponent {
   children?: PageComponent[];
 }
 
-export type ComponentType = 
+export type ComponentType =
   | 'heading'
   | 'paragraph'
   | 'image'
@@ -246,7 +247,7 @@ export type ComponentType =
   | 'embed';
 
 // ============================================
-// TIPOS DE REPORTES Y ESTADÍSTICAS
+// REPORTS AND ANALYTICS
 // ============================================
 
 export interface DashboardMetrics {
@@ -294,7 +295,7 @@ export interface StudentActivity {
 }
 
 // ============================================
-// TIPOS DE CONFIGURACIÓN
+// SETTINGS TYPES
 // ============================================
 
 export interface SchoolSettings {
@@ -339,7 +340,7 @@ export interface SocialLinks {
 }
 
 // ============================================
-// TIPOS DE UI
+// UI TYPES
 // ============================================
 
 export interface TableColumn<T> {

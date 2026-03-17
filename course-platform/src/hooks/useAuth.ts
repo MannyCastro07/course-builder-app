@@ -2,136 +2,100 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { authService } from '@/services';
 import { useAuthStore, showSuccessToast, showErrorToast } from '@/stores';
+import { getDefaultRouteForRole } from '@/utils/auth';
 
 export function useAuth() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { login: storeLogin, logout: storeLogout } = useAuthStore();
 
-  // Login mutation
   const loginMutation = useMutation({
     mutationFn: authService.login,
     onSuccess: (data) => {
       storeLogin(data.user, data.session?.access_token || '');
-      showSuccessToast('¡Bienvenido!', `Hola, ${data.user.firstName}`);
-      navigate('/dashboard');
+      showSuccessToast('Welcome back', `Signed in as ${data.user.firstName}`);
+      navigate(getDefaultRouteForRole(data.user.role));
     },
     onError: (error: any) => {
-      showErrorToast(
-        'Error al iniciar sesión',
-        error.message || 'Credenciales inválidas'
-      );
+      showErrorToast('Sign in failed', error.message || 'Invalid credentials');
     },
   });
 
-  // Register mutation
   const registerMutation = useMutation({
     mutationFn: authService.register,
     onSuccess: (data) => {
       if (data.session) {
         storeLogin(data.user, data.session.access_token);
-        showSuccessToast('¡Cuenta creada!', 'Tu cuenta ha sido creada exitosamente');
-        navigate('/dashboard');
+        showSuccessToast('Account created', 'Your workspace is ready.');
+        navigate(getDefaultRouteForRole(data.user.role));
       } else {
-        showSuccessToast(
-          'Registro exitoso',
-          'Por favor, revisa tu correo para confirmar tu cuenta'
-        );
+        showSuccessToast('Registration successful', 'Please check your email to confirm your account.');
         navigate('/login');
       }
     },
     onError: (error: any) => {
-      showErrorToast(
-        'Error al registrarse',
-        error.message || 'No se pudo crear la cuenta'
-      );
+      showErrorToast('Registration failed', error.message || 'Could not create the account');
     },
   });
 
-  // Logout mutation
   const logoutMutation = useMutation({
     mutationFn: authService.logout,
     onSuccess: () => {
       storeLogout();
       queryClient.clear();
-      showSuccessToast('Sesión cerrada', 'Has cerrado sesión exitosamente');
+      showSuccessToast('Signed out', 'You have been logged out successfully.');
       navigate('/login');
     },
     onError: () => {
-      // Even if the API call fails, logout locally
       storeLogout();
       queryClient.clear();
       navigate('/login');
     },
   });
 
-  // Forgot password mutation
   const forgotPasswordMutation = useMutation({
     mutationFn: authService.forgotPassword,
     onSuccess: () => {
-      showSuccessToast(
-        'Correo enviado',
-        'Revisa tu correo para restablecer tu contraseña'
-      );
+      showSuccessToast('Email sent', 'Check your inbox for password reset instructions.');
     },
     onError: (error: any) => {
-      showErrorToast(
-        'Error',
-        error.message || 'No se pudo enviar el correo'
-      );
+      showErrorToast('Request failed', error.message || 'Could not send the reset email');
     },
   });
 
-  // Reset password mutation
   const resetPasswordMutation = useMutation({
     mutationFn: authService.resetPassword,
     onSuccess: () => {
-      showSuccessToast(
-        'Contraseña actualizada',
-        'Tu contraseña ha sido restablecida exitosamente'
-      );
+      showSuccessToast('Password updated', 'Your password has been reset successfully.');
       navigate('/login');
     },
     onError: (error: any) => {
-      showErrorToast(
-        'Error',
-        error.message || 'No se pudo restablecer la contraseña'
-      );
+      showErrorToast('Reset failed', error.message || 'Could not reset the password');
     },
   });
 
-  // Update profile mutation
   const updateProfileMutation = useMutation({
     mutationFn: authService.updateProfile,
     onSuccess: (user) => {
       useAuthStore.getState().updateUser(user);
-      showSuccessToast('Perfil actualizado', 'Tus cambios han sido guardados');
+      showSuccessToast('Profile updated', 'Your changes have been saved.');
     },
     onError: (error: any) => {
-      showErrorToast(
-        'Error',
-        error.message || 'No se pudo actualizar el perfil'
-      );
+      showErrorToast('Update failed', error.message || 'Could not update your profile');
     },
   });
 
-  // Change password mutation
   const changePasswordMutation = useMutation({
-    mutationFn: ({ newPassword }: { newPassword: string }) =>
-      authService.changePassword(newPassword),
+    mutationFn: ({ newPassword }: { newPassword: string }) => authService.changePassword(newPassword),
     onSuccess: () => {
-      showSuccessToast('Contraseña actualizada', 'Tu contraseña ha sido cambiada exitosamente');
+      showSuccessToast('Password updated', 'Your password has been changed successfully.');
     },
     onError: (error: any) => {
-      showErrorToast(
-        'Error',
-        error.response?.data?.message || 'No se pudo cambiar la contraseña'
-      );
+      showErrorToast('Update failed', error.response?.data?.message || 'Could not change the password');
     },
   });
 
   return {
-    // Mutations
     login: loginMutation.mutate,
     register: registerMutation.mutate,
     logout: logoutMutation.mutate,
@@ -139,8 +103,6 @@ export function useAuth() {
     resetPassword: resetPasswordMutation.mutate,
     updateProfile: updateProfileMutation.mutate,
     changePassword: changePasswordMutation.mutate,
-
-    // Loading states
     isLoggingIn: loginMutation.isPending,
     isRegistering: registerMutation.isPending,
     isLoggingOut: logoutMutation.isPending,
@@ -151,23 +113,20 @@ export function useAuth() {
   };
 }
 
-// Hook to get current user
 export function useCurrentUser() {
   return useQuery({
     queryKey: ['currentUser'],
     queryFn: authService.getCurrentUser,
     enabled: useAuthStore.getState().isAuthenticated,
-    staleTime: 5 * 60 * 1000, // 5 minutes
+    staleTime: 5 * 60 * 1000,
   });
 }
 
-// Hook to check if user is authenticated
 export function useIsAuthenticated() {
   const { isAuthenticated } = useAuthStore();
   return isAuthenticated;
 }
 
-// Hook to get user role
 export function useUserRole() {
   const { user } = useAuthStore();
   return user?.role;

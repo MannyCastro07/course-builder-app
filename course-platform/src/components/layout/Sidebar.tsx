@@ -1,8 +1,9 @@
 import React from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { cn } from '@/utils';
-import { useUIStore } from '@/stores';
+import { useUIStore, useAuthStore } from '@/stores';
 import { useIsMobile } from '@/hooks';
+import { getRoleLabel, getUserInitials, normalizeUserRole, type AppRole } from '@/utils/auth';
 import {
   LayoutDashboard,
   BookOpen,
@@ -23,24 +24,55 @@ interface NavItem {
   badge?: number;
 }
 
-const mainNavItems: NavItem[] = [
-  { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
-  { label: 'Cursos', href: '/courses', icon: BookOpen },
-  { label: 'Estudiantes', href: '/students', icon: Users },
-  { label: 'Reportes', href: '/reports', icon: BarChart3 },
-];
-
-const secondaryNavItems: NavItem[] = [
-  { label: 'Configuración', href: '/settings', icon: Settings },
-  { label: 'Ayuda', href: '/help', icon: HelpCircle },
-];
+const navByRole: Record<AppRole, { main: NavItem[]; secondary: NavItem[] }> = {
+  super_admin: {
+    main: [
+      { label: 'Dashboard', href: '/admin/dashboard', icon: LayoutDashboard },
+      { label: 'Courses', href: '/admin/courses', icon: BookOpen },
+      { label: 'Students', href: '/admin/students', icon: Users },
+      { label: 'Reports', href: '/admin/reports', icon: BarChart3 },
+    ],
+    secondary: [
+      { label: 'Settings', href: '/admin/settings', icon: Settings },
+      { label: 'Help', href: '/help', icon: HelpCircle },
+    ],
+  },
+  admin: {
+    main: [
+      { label: 'Dashboard', href: '/admin/dashboard', icon: LayoutDashboard },
+      { label: 'Courses', href: '/admin/courses', icon: BookOpen },
+      { label: 'Students', href: '/admin/students', icon: Users },
+      { label: 'Reports', href: '/admin/reports', icon: BarChart3 },
+    ],
+    secondary: [
+      { label: 'Settings', href: '/admin/settings', icon: Settings },
+      { label: 'Help', href: '/help', icon: HelpCircle },
+    ],
+  },
+  agent: {
+    main: [
+      { label: 'Dashboard', href: '/agent/dashboard', icon: LayoutDashboard },
+      { label: 'Courses', href: '/agent/courses', icon: BookOpen },
+    ],
+    secondary: [{ label: 'Help', href: '/help', icon: HelpCircle }],
+  },
+  trainee: {
+    main: [
+      { label: 'Dashboard', href: '/learn/dashboard', icon: LayoutDashboard },
+      { label: 'My Learning', href: '/learn/courses', icon: BookOpen },
+    ],
+    secondary: [{ label: 'Help', href: '/help', icon: HelpCircle }],
+  },
+};
 
 export function Sidebar() {
   const { sidebarCollapsed, toggleSidebar, sidebarMobileOpen, setSidebarMobileOpen } = useUIStore();
+  const { user } = useAuthStore();
   const isMobile = useIsMobile();
   const location = useLocation();
+  const role = normalizeUserRole(user?.role);
+  const navigation = navByRole[role];
 
-  // Close mobile sidebar when route changes
   React.useEffect(() => {
     if (isMobile) {
       setSidebarMobileOpen(false);
@@ -49,29 +81,20 @@ export function Sidebar() {
 
   const sidebarContent = (
     <>
-      {/* Logo */}
-      <div className="flex h-16 items-center justify-between px-4 border-b">
+      <div className="flex h-16 items-center justify-between border-b px-4">
         <div className={cn('flex items-center gap-3', sidebarCollapsed && 'justify-center w-full')}>
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
             <GraduationCap className="h-5 w-5 text-primary-foreground" />
           </div>
-          {!sidebarCollapsed && (
-            <span className="text-lg font-bold">EduPlatform</span>
-          )}
+          {!sidebarCollapsed && <span className="text-lg font-bold">EduPlatform</span>}
         </div>
         {isMobile && (
-          <button
-            onClick={() => setSidebarMobileOpen(false)}
-            className="p-2 rounded-md hover:bg-accent"
-          >
+          <button onClick={() => setSidebarMobileOpen(false)} className="rounded-md p-2 hover:bg-accent">
             <X className="h-5 w-5" />
           </button>
         )}
         {!isMobile && !sidebarCollapsed && (
-          <button
-            onClick={toggleSidebar}
-            className="p-1.5 rounded-md hover:bg-accent text-muted-foreground"
-          >
+          <button onClick={toggleSidebar} className="rounded-md p-1.5 text-muted-foreground hover:bg-accent">
             <ChevronLeft className="h-4 w-4" />
           </button>
         )}
@@ -85,10 +108,9 @@ export function Sidebar() {
         )}
       </div>
 
-      {/* Navigation */}
-      <nav className="flex-1 overflow-y-auto py-4 px-3">
+      <nav className="flex-1 overflow-y-auto px-3 py-4">
         <ul className="space-y-1">
-          {mainNavItems.map((item) => (
+          {navigation.main.map((item) => (
             <li key={item.href}>
               <NavLink
                 to={item.href}
@@ -121,7 +143,7 @@ export function Sidebar() {
         <div className={cn('my-4 border-t', sidebarCollapsed && 'mx-2')} />
 
         <ul className="space-y-1">
-          {secondaryNavItems.map((item) => (
+          {navigation.secondary.map((item) => (
             <li key={item.href}>
               <NavLink
                 to={item.href}
@@ -143,16 +165,15 @@ export function Sidebar() {
         </ul>
       </nav>
 
-      {/* User Profile */}
       {!sidebarCollapsed && (
         <div className="border-t p-4">
           <div className="flex items-center gap-3">
-            <div className="h-9 w-9 rounded-full bg-primary/10 flex items-center justify-center">
-              <span className="text-sm font-medium text-primary">JD</span>
+            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/10">
+              <span className="text-sm font-medium text-primary">{getUserInitials(user)}</span>
             </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium truncate">John Doe</p>
-              <p className="text-xs text-muted-foreground truncate">john@example.com</p>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-medium">{user?.firstName} {user?.lastName}</p>
+              <p className="truncate text-xs text-muted-foreground">{getRoleLabel(role)}</p>
             </div>
           </div>
         </div>
@@ -160,21 +181,15 @@ export function Sidebar() {
     </>
   );
 
-  // Mobile sidebar
   if (isMobile) {
     return (
       <>
-        {/* Mobile overlay */}
         {sidebarMobileOpen && (
-          <div
-            className="fixed inset-0 z-40 bg-black/50"
-            onClick={() => setSidebarMobileOpen(false)}
-          />
+          <div className="fixed inset-0 z-40 bg-black/50" onClick={() => setSidebarMobileOpen(false)} />
         )}
-        {/* Mobile sidebar */}
         <aside
           className={cn(
-            'fixed inset-y-0 left-0 z-50 w-64 bg-background border-r flex flex-col transition-transform duration-300',
+            'fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r bg-background transition-transform duration-300',
             sidebarMobileOpen ? 'translate-x-0' : '-translate-x-full'
           )}
         >
@@ -184,11 +199,10 @@ export function Sidebar() {
     );
   }
 
-  // Desktop sidebar
   return (
     <aside
       className={cn(
-        'fixed inset-y-0 left-0 z-30 bg-background border-r flex flex-col transition-all duration-300',
+        'fixed inset-y-0 left-0 z-30 flex flex-col border-r bg-background transition-all duration-300',
         sidebarCollapsed ? 'w-16' : 'w-64'
       )}
     >

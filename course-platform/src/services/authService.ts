@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase';
 import type { User } from '@/types';
+import { normalizeUserRole } from '@/utils/auth';
 
 interface LoginCredentials {
   email: string;
@@ -28,6 +29,29 @@ interface ResetPasswordData {
   password: string;
 }
 
+function mapSupabaseUserToAppUser({
+  authUser,
+  profile,
+  fallbackFirstName,
+  fallbackLastName,
+}: {
+  authUser: any;
+  profile?: any;
+  fallbackFirstName?: string;
+  fallbackLastName?: string;
+}): User {
+  return {
+    id: authUser.id,
+    email: authUser.email!,
+    firstName: profile?.first_name || authUser.user_metadata?.first_name || fallbackFirstName || 'User',
+    lastName: profile?.last_name || authUser.user_metadata?.last_name || fallbackLastName || '',
+    // Temporary MVP bridge: backend may still emit legacy roles like instructor/student.
+    // Normalize them here so the frontend only deals with the production target roles.
+    role: normalizeUserRole(profile?.role || authUser.user_metadata?.role),
+    avatar: profile?.avatar_url,
+  };
+}
+
 export const authService = {
   async login(credentials: LoginCredentials): Promise<AuthResponse> {
     const { data, error } = await supabase.auth.signInWithPassword({
@@ -40,27 +64,14 @@ export const authService = {
       throw error;
     }
 
-    // Fetch profile data
     const { data: profile } = await supabase
       .from('profiles')
       .select('*')
       .eq('id', data.user.id)
       .maybeSingle();
 
-    // If profile is missing (e.g. trigger didn't run), use metadata as fallback
-    const firstName = profile?.first_name || data.user.user_metadata?.first_name || 'Usuario';
-    const lastName = profile?.last_name || data.user.user_metadata?.last_name || '';
-    const role = profile?.role || 'student';
-
     return {
-      user: {
-        id: data.user.id,
-        email: data.user.email!,
-        firstName,
-        lastName,
-        role,
-        avatar: profile?.avatar_url,
-      } as User,
+      user: mapSupabaseUserToAppUser({ authUser: data.user, profile }),
       session: data.session,
     };
   },
@@ -73,22 +84,19 @@ export const authService = {
         data: {
           first_name: data.firstName,
           last_name: data.lastName,
-        }
-      }
+          role: 'trainee',
+        },
+      },
     });
 
     if (error) throw error;
 
-    // The trigger in SQL (if created) should handle profile creation
-    // For now, we return the user object
     return {
-      user: {
-        id: authData.user!.id,
-        email: authData.user!.email!,
-        firstName: data.firstName,
-        lastName: data.lastName,
-        role: 'student',
-      } as User,
+      user: mapSupabaseUserToAppUser({
+        authUser: authData.user!,
+        fallbackFirstName: data.firstName,
+        fallbackLastName: data.lastName,
+      }),
       session: authData.session,
     };
   },
@@ -106,41 +114,37 @@ export const authService = {
 
   async resetPassword(data: ResetPasswordData): Promise<{ message: string }> {
     const { error } = await supabase.auth.updateUser({
-      password: data.password
+      password: data.password,
     });
     if (error) throw error;
     return { message: 'Password updated successfully' };
   },
 
   async verifyEmail(_token: string): Promise<{ message: string }> {
-    // Supabase handles this via URL
     return { message: 'Verify email is handled by Supabase' };
   },
 
   async getCurrentUser(): Promise<User | null> {
-    const { data: { user } } = await supabase.auth.getUser();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
     if (!user) return null;
 
     const { data: profile } = await supabase
       .from('profiles')
       .select('*')
       .eq('id', user.id)
-      .single();
+      .maybeSingle();
 
-    if (!profile) return null;
-
-    return {
-      id: user.id,
-      email: user.email!,
-      firstName: profile.first_name,
-      lastName: profile.last_name,
-      role: profile.role,
-      avatar: profile.avatar_url,
-    } as User;
+    return mapSupabaseUserToAppUser({ authUser: user, profile });
   },
 
   async updateProfile(userData: Partial<User>): Promise<User> {
-    const { data: { user } } = await supabase.auth.getUser();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
     if (!user) throw new Error('Not authenticated');
 
     const profileUpdates = {
@@ -159,24 +163,15 @@ export const authService = {
 
     if (error) throw error;
 
-    return {
-      id: user.id,
-      email: user.email!,
-      firstName: profile.first_name,
-      lastName: profile.last_name,
-      role: profile.role,
-      avatar: profile.avatar_url,
-    } as User;
+    return mapSupabaseUserToAppUser({ authUser: user, profile });
   },
 
   async changePassword(newPassword: string): Promise<{ message: string }> {
-    // Supabase doesn't require old password for update, but it's good practice
-    // We can re-authenticate if we want to be strict, but for now:
     const { error } = await supabase.auth.updateUser({
-      password: newPassword
+      password: newPassword,
     });
 
     if (error) throw error;
-    return { message: 'Contraseña actualizada exitosamente' };
+    return { message: 'Password updated successfully' };
   },
 };

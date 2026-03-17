@@ -4,6 +4,7 @@ import type { Course, Section, Lesson } from '@/types';
 import { courseService } from '@/services/courseService';
 import { showSuccessToast, showErrorToast } from '@/stores/uiStore';
 import { supabase } from '@/lib/supabase';
+import { serializeLessonContent } from '@/utils/lessonContent';
 
 interface CourseEditorState {
   // Course state in editor
@@ -421,7 +422,6 @@ export const useCourseStore = create<CourseStore>()(
 
         set({ isSaving: true });
         try {
-          // 1. Update main course info
           await courseService.updateCourse(currentCourse.id, {
             title: currentCourse.title,
             description: currentCourse.description,
@@ -429,45 +429,68 @@ export const useCourseStore = create<CourseStore>()(
             status: currentCourse.status,
             price: currentCourse.price,
             category: currentCourse.category,
+            slug: currentCourse.slug,
+            keywords: currentCourse.keywords,
+            access: currentCourse.access,
+            coursePageTemplate: currentCourse.coursePageTemplate,
+            selectedCoursePageTemplate: currentCourse.selectedCoursePageTemplate,
+            afterPurchase: currentCourse.afterPurchase,
           });
 
-          // 2. Save all sections and their lessons
+          const { data: existingSections, error: existingSectionsError } = await supabase
+            .from('sections')
+            .select('id, lessons(id)')
+            .eq('course_id', currentCourse.id);
+
+          if (existingSectionsError) throw existingSectionsError;
+
+          const nextSectionIds = new Set(currentCourse.sections.map((section) => section.id));
+          const existingSectionIds = new Set((existingSections || []).map((section: any) => section.id));
+
+          const lessonIdsToKeep = new Set(currentCourse.sections.flatMap((section) => section.lessons.map((lesson) => lesson.id)));
+          const lessonIdsToDelete = (existingSections || [])
+            .flatMap((section: any) => section.lessons || [])
+            .map((lesson: any) => lesson.id)
+            .filter((id: string) => !lessonIdsToKeep.has(id));
+
+          if (lessonIdsToDelete.length > 0) {
+            const { error: deleteLessonsError } = await supabase.from('lessons').delete().in('id', lessonIdsToDelete);
+            if (deleteLessonsError) throw deleteLessonsError;
+          }
+
+          const sectionIdsToDelete = [...existingSectionIds].filter((id) => !nextSectionIds.has(id));
+          if (sectionIdsToDelete.length > 0) {
+            const { error: deleteSectionsError } = await supabase.from('sections').delete().in('id', sectionIdsToDelete);
+            if (deleteSectionsError) throw deleteSectionsError;
+          }
+
           for (const section of currentCourse.sections) {
-            // Upsert section
-            await supabase
-              .from('sections')
-              .upsert({
-                id: section.id,
-                course_id: currentCourse.id,
-                title: section.title,
-                order: section.order,
-                access_status: section.accessStatus || 'draft',
-              });
+            const { error: sectionError } = await supabase.from('sections').upsert({
+              id: section.id,
+              course_id: currentCourse.id,
+              title: section.title,
+              order: section.order,
+              access_status: section.accessStatus || 'draft',
+            });
+            if (sectionError) throw sectionError;
 
             for (const lesson of section.lessons) {
-              // Upsert lesson
-                const contentData = lesson.content?.data;
-                const formattedContent = typeof contentData === 'string' 
-                  ? contentData 
-                  : (contentData ? JSON.stringify(contentData) : '');
-
-                await supabase
-                  .from('lessons')
-                  .upsert({
-                    id: lesson.id,
-                    section_id: section.id,
-                    course_id: currentCourse.id,
-                    title: lesson.title,
-                    content: formattedContent,
-                    type: lesson.type,
-                    order: lesson.order,
-                    is_free: lesson.isPreview,
-                    duration: lesson.duration,
-                    video_url: lesson.videoUrl,
-                  });
+              const { error: lessonError } = await supabase.from('lessons').upsert({
+                id: lesson.id,
+                section_id: section.id,
+                course_id: currentCourse.id,
+                title: lesson.title,
+                content: serializeLessonContent(lesson),
+                type: lesson.type,
+                order: lesson.order,
+                is_free: lesson.isPreview,
+                duration: lesson.duration,
+                video_url: lesson.videoUrl || null,
+              });
+              if (lessonError) throw lessonError;
             }
           }
-          
+
           set({ hasUnsavedChanges: false });
           showSuccessToast('Course saved', 'Changes have been saved successfully');
         } catch (error) {

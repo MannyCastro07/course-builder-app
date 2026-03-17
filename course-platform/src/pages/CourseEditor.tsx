@@ -36,7 +36,9 @@ import {
   X,
 } from 'lucide-react';
 import { cn } from '@/utils';
-import type { Section, Lesson } from '@/types';
+import type { Section, Lesson, Attachment } from '@/types';
+import { createAttachmentFromUpload } from '@/utils/lessonContent';
+import type { UploadResult } from '@/services/storageService';
 
 // Sortable Section Item
 function SortableSection({ section, index, isExpanded, onToggle }: { section: Section; index: number; isExpanded: boolean; onToggle: () => void }) {
@@ -131,10 +133,11 @@ function ActivityModal({
     {
       title: 'Multimedia',
       activities: [
-        { type: 'video', label: 'Video', icon: PlayCircle, description: 'Upload or embed a video file' },
-        { type: 'text', label: 'Text', icon: FileText, description: 'Text content or rich text' },
-        { type: 'pdf', label: 'PDF Document', icon: FileText, description: 'Upload a PDF document' },
-        { type: 'image', label: 'Image Gallery', icon: FileText, description: 'Upload images' },
+        { type: 'video', label: 'Video Lesson', icon: PlayCircle, description: 'Upload a video file or paste an external video URL' },
+        { type: 'text', label: 'Text Lesson', icon: FileText, description: 'Write lesson text directly inside the editor' },
+        { type: 'pdf', label: 'PDF Lesson', icon: FileText, description: 'Attach a PDF file for reading or download' },
+        { type: 'download', label: 'Document Lesson', icon: FileText, description: 'Attach DOC, DOCX, TXT, RTF, or ODT files' },
+        { type: 'image', label: 'Image Gallery', icon: FileText, description: 'Upload one or more images' },
       ],
     },
     {
@@ -294,6 +297,9 @@ function SortableLesson({ lesson, isSelected, onClick }: { lesson: Lesson; isSel
       <span className="flex-1 truncate">{lesson.title}</span>
       <div className="flex items-center gap-2">
         {lesson.videoUrl && <Badge variant="outline" className="text-[10px] h-4 bg-blue-50 text-blue-500 border-blue-100">VIDEO</Badge>}
+        {(lesson.type === 'pdf' || lesson.type === 'download') && lesson.attachments.length > 0 && (
+          <Badge variant="outline" className="text-[10px] h-4 bg-amber-50 text-amber-700 border-amber-100">FILE</Badge>
+        )}
         <button
           onClick={(e) => { e.stopPropagation(); deleteLesson(lesson.id); }}
           className="p-1 hover:bg-destructive/10 rounded-md text-slate-400 hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
@@ -311,147 +317,67 @@ function LessonEditor() {
   const [lessonType, setLessonType] = React.useState<Lesson['type']>('text');
   const [textContent, setTextContent] = React.useState('');
   const [externalVideoUrl, setExternalVideoUrl] = React.useState('');
-  const [uploadedFile, setUploadedFile] = React.useState<{ url: string; name: string; type: string } | null>(null);
-  const [uploadedImages, setUploadedImages] = React.useState<{ url: string; name: string; type: string }[]>([]);
-  const [uploadedVideo, setUploadedVideo] = React.useState<{ url: string; name: string; type: string } | null>(null);
+  const [uploadedFile, setUploadedFile] = React.useState<Attachment | null>(null);
+  const [uploadedImages, setUploadedImages] = React.useState<Attachment[]>([]);
+  const [uploadedVideo, setUploadedVideo] = React.useState<Attachment | null>(null);
 
-  // Debounced save to backend
-  const debouncedSaveCourse = React.useCallback(
-    () => {
-      const timeoutId = setTimeout(() => {
-        saveCourse();
-      }, 500);
-      return () => clearTimeout(timeoutId);
-    },
-    [saveCourse]
-  );
+  const queueSave = React.useCallback(() => {
+    window.setTimeout(() => {
+      saveCourse();
+    }, 300);
+  }, [saveCourse]);
 
-  // Sync with selected lesson
   React.useEffect(() => {
-    if (selectedLesson) {
-      setLessonType(selectedLesson.type);
-      setExternalVideoUrl(selectedLesson.videoUrl || '');
-      
-      // Parse content for file data
-      if (selectedLesson.content?.data) {
-        if (selectedLesson.type === 'text') {
-          setTextContent(selectedLesson.content.data as string);
-        } else if (selectedLesson.type === 'pdf') {
-          try {
-            const parsed = JSON.parse(selectedLesson.content.data as string);
-            if (parsed.fileUrl) {
-              setUploadedFile({ url: parsed.fileUrl, name: parsed.fileName || 'PDF Document', type: 'application/pdf' });
-            }
-          } catch (e) {
-            // Not JSON, ignore
-          }
-        } else if (selectedLesson.type === 'image') {
-          try {
-            const parsed = JSON.parse(selectedLesson.content.data as string);
-            if (parsed.files) {
-              setUploadedImages(parsed.files);
-            }
-          } catch (e) {
-            // Not JSON, ignore
-          }
-        }
-      }
-      
-      // Parse video URL for uploaded video
-      if (selectedLesson.videoUrl && !selectedLesson.videoUrl.match(/youtube|vimeo/i)) {
-        setUploadedVideo({ url: selectedLesson.videoUrl, name: 'Video', type: 'video/mp4' });
-      }
-    }
+    if (!selectedLesson) return;
+
+    setLessonType(selectedLesson.type);
+    setTextContent(selectedLesson.type === 'text' && typeof selectedLesson.content?.data === 'string' ? selectedLesson.content.data : '');
+    setUploadedFile(['pdf', 'download'].includes(selectedLesson.type) ? selectedLesson.attachments[0] || null : null);
+    setUploadedImages(selectedLesson.type === 'image' ? selectedLesson.attachments || [] : []);
+
+    const currentVideoUrl = selectedLesson.videoUrl || '';
+    const uploadedVideoAttachment = selectedLesson.attachments.find((attachment) => attachment.type?.includes('video')) || null;
+    setUploadedVideo(uploadedVideoAttachment);
+    setExternalVideoUrl(uploadedVideoAttachment ? '' : currentVideoUrl);
   }, [selectedLesson]);
 
-  // Handle type change - clears incompatible data and persists to backend
+  const persistLesson = React.useCallback((updates: Partial<Lesson>) => {
+    if (!selectedLesson) return;
+    updateLesson(selectedLesson.id, updates);
+    queueSave();
+  }, [selectedLesson, updateLesson, queueSave]);
+
   const handleTypeChange = (newType: Lesson['type']) => {
     if (!selectedLesson) return;
 
     setLessonType(newType);
 
-    // Clear incompatible data
-    const updates: any = { type: newType };
+    const reset: Partial<Lesson> = {
+      type: newType,
+      attachments: newType === 'image' ? uploadedImages : newType === 'video' ? (uploadedVideo ? [uploadedVideo] : []) : newType === 'pdf' || newType === 'download' ? (uploadedFile ? [uploadedFile] : []) : [],
+      videoUrl: newType === 'video' ? (uploadedVideo?.url || externalVideoUrl || '') : undefined,
+      content: newType === 'image'
+        ? { type: 'gallery', data: '' }
+        : newType === 'video'
+          ? { type: 'video', data: '' }
+          : newType === 'pdf' || newType === 'download'
+            ? { type: 'file', data: '' }
+            : { type: 'rich-text', data: newType === 'text' ? textContent : '' },
+    };
 
-    if (newType !== 'pdf') {
-      setUploadedFile(null);
-      updates.content = undefined;
-    }
-    if (newType !== 'image') {
-      setUploadedImages([]);
-      if (newType !== 'pdf') {
-        updates.content = undefined;
-      }
-    }
     if (newType !== 'video') {
-      setUploadedVideo(null);
       setExternalVideoUrl('');
-      updates.videoUrl = undefined;
+      setUploadedVideo(null);
+      reset.videoUrl = undefined;
     }
-    if (newType !== 'text') {
-      setTextContent('');
-      if (newType !== 'pdf' && newType !== 'image') {
-        updates.content = undefined;
-      }
-    }
+    if (newType !== 'image') setUploadedImages([]);
+    if (newType !== 'pdf' && newType !== 'download') setUploadedFile(null);
+    if (newType !== 'text') setTextContent('');
 
-    // Persist to local state
-    updateLesson(selectedLesson.id, updates);
-
-    // Trigger backend save
-    debouncedSaveCourse();
+    persistLesson(reset);
   };
 
-  // Save lesson with file data and persist to backend
-  const handleSaveLesson = () => {
-    if (!selectedLesson) return;
-
-    let contentData: any;
-    let videoUrl = externalVideoUrl;
-
-    switch (lessonType) {
-      case 'text':
-        contentData = { type: 'rich-text', data: textContent };
-        break;
-      case 'pdf':
-        contentData = { 
-          type: 'file', 
-          data: JSON.stringify({ 
-            fileUrl: uploadedFile?.url, 
-            fileName: uploadedFile?.name 
-          }) 
-        };
-        break;
-      case 'image':
-        contentData = { 
-          type: 'gallery', 
-          data: JSON.stringify({ files: uploadedImages }) 
-        };
-        break;
-      case 'video':
-        contentData = { type: 'video', data: '' };
-        videoUrl = uploadedVideo?.url || externalVideoUrl;
-        break;
-      default:
-        contentData = selectedLesson.content;
-    }
-
-    updateLesson(selectedLesson.id, {
-      type: lessonType,
-      content: contentData,
-      videoUrl: lessonType === 'video' ? videoUrl : undefined,
-    });
-
-    // Trigger backend save
-    debouncedSaveCourse();
-  };
-
-  // Auto-save when file uploads complete or are removed
-  React.useEffect(() => {
-    if (selectedLesson) {
-      handleSaveLesson();
-    }
-  }, [uploadedFile, uploadedImages, uploadedVideo]);
+  const toAttachments = (files: UploadResult[]) => files.map((file) => createAttachmentFromUpload(file));
 
   if (!selectedLesson) {
     return (
@@ -468,62 +394,38 @@ function LessonEditor() {
     <div className="space-y-4">
       <div>
         <label className="text-sm font-medium mb-2 block">Lesson Title</label>
-        <Input
-          value={selectedLesson.title}
-          onChange={(e) => updateLesson(selectedLesson.id, { title: e.target.value })}
-        />
+        <Input value={selectedLesson.title} onChange={(e) => persistLesson({ title: e.target.value })} />
       </div>
 
       <div>
         <label className="text-sm font-medium mb-2 block">Description</label>
-        <Textarea
-          value={selectedLesson.description || ''}
-          onChange={(e) => updateLesson(selectedLesson.id, { description: e.target.value })}
-          rows={3}
-        />
+        <Textarea value={selectedLesson.description || ''} onChange={(e) => persistLesson({ description: e.target.value })} rows={3} />
       </div>
 
       <div className="grid grid-cols-2 gap-4">
         <div>
           <label className="text-sm font-medium mb-2 block">Type</label>
-          <select
-            className="w-full h-9 rounded-md border border-input bg-transparent px-3"
-            value={lessonType}
-            onChange={(e) => {
-              const newType = e.target.value as Lesson['type'];
-              handleTypeChange(newType);
-            }}
-          >
+          <select className="w-full h-9 rounded-md border border-input bg-transparent px-3" value={lessonType} onChange={(e) => handleTypeChange(e.target.value as Lesson['type'])}>
             <option value="text">Text</option>
             <option value="pdf">PDF</option>
+            <option value="download">Document</option>
             <option value="image">Image</option>
             <option value="video">Video</option>
             <option value="quiz">Quiz</option>
             <option value="assignment">Assignment</option>
-            <option value="download">Download</option>
           </select>
         </div>
         <div>
           <label className="text-sm font-medium mb-2 block">Duration (min)</label>
-          <Input
-            type="number"
-            value={Math.round((selectedLesson.duration || 0) / 60)}
-            onChange={(e) => updateLesson(selectedLesson.id, { duration: parseInt(e.target.value) * 60 })}
-          />
+          <Input type="number" value={Math.round((selectedLesson.duration || 0) / 60)} onChange={(e) => persistLesson({ duration: (parseInt(e.target.value || '0', 10) || 0) * 60 })} />
         </div>
       </div>
 
       <div className="flex items-center gap-2">
-        <input
-          type="checkbox"
-          id="isPreview"
-          checked={selectedLesson.isPreview}
-          onChange={(e) => updateLesson(selectedLesson.id, { isPreview: e.target.checked })}
-        />
+        <input type="checkbox" id="isPreview" checked={selectedLesson.isPreview} onChange={(e) => persistLesson({ isPreview: e.target.checked })} />
         <label htmlFor="isPreview" className="text-sm">Allow Preview</label>
       </div>
 
-      {/* TEXT CONTENT */}
       {lessonType === 'text' && (
         <Card className="p-4">
           <label className="text-sm font-medium mb-2 block">Content</label>
@@ -533,65 +435,41 @@ function LessonEditor() {
             value={textContent}
             onChange={(e) => {
               setTextContent(e.target.value);
-              updateLesson(selectedLesson.id, { 
-                content: { type: 'rich-text', data: e.target.value } 
-              });
+              persistLesson({ content: { type: 'rich-text', data: e.target.value } });
             }}
           />
         </Card>
       )}
 
-      {/* PDF UPLOAD */}
-      {lessonType === 'pdf' && (
+      {(lessonType === 'pdf' || lessonType === 'download') && (
         <Card className="p-4 space-y-4">
-          <label className="text-sm font-medium block">PDF Document</label>
+          <label className="text-sm font-medium block">{lessonType === 'pdf' ? 'PDF Document' : 'Document Download'}</label>
           {uploadedFile ? (
             <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
               <div className="flex items-center gap-3">
                 <FileText className="h-8 w-8 text-red-500" />
                 <div className="flex-1">
                   <p className="font-medium">{uploadedFile.name}</p>
-                  <a 
-                    href={uploadedFile.url} 
-                    target="_blank" 
-                    rel="noopener noreferrer"
-                    className="text-sm text-primary hover:underline"
-                  >
-                    View PDF
-                  </a>
+                  <a href={uploadedFile.url} target="_blank" rel="noopener noreferrer" className="text-sm text-primary hover:underline">Open file</a>
                 </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    setUploadedFile(null);
-                    updateLesson(selectedLesson.id, { content: undefined });
-                    debouncedSaveCourse();
-                  }}
-                >
+                <Button variant="ghost" size="sm" onClick={() => {
+                  setUploadedFile(null);
+                  persistLesson({ attachments: [], content: { type: 'file', data: '' } });
+                }}>
                   <X className="h-4 w-4" />
                 </Button>
               </div>
             </div>
           ) : (
             <FileUpload
-              accept="pdf"
+              accept={lessonType === 'pdf' ? 'pdf' : 'document'}
               courseId={currentCourse?.id}
               lessonId={selectedLesson.id}
               onUploadComplete={(files) => {
-                if (files.length > 0) {
-                  setUploadedFile(files[0]);
-                  updateLesson(selectedLesson.id, { 
-                    content: { 
-                      type: 'file' as any, 
-                      data: JSON.stringify({ 
-                        fileUrl: files[0].url, 
-                        fileName: files[0].name 
-                      }) 
-                    } 
-                  });
-                  debouncedSaveCourse();
-                }
+                const attachment = toAttachments(files)[0];
+                if (!attachment) return;
+                setUploadedFile(attachment);
+                persistLesson({ attachments: [attachment], content: { type: 'file', data: '' } });
               }}
               onUploadError={(error) => console.error('Upload error:', error)}
             />
@@ -599,30 +477,19 @@ function LessonEditor() {
         </Card>
       )}
 
-      {/* IMAGE UPLOAD */}
       {lessonType === 'image' && (
         <Card className="p-4 space-y-4">
           <label className="text-sm font-medium block">Image Gallery</label>
           {uploadedImages.length > 0 && (
             <div className="grid grid-cols-3 gap-2">
               {uploadedImages.map((img, index) => (
-                <div key={index} className="relative group">
-                  <img 
-                    src={img.url} 
-                    alt={img.name}
-                    className="w-full h-24 object-cover rounded-lg"
-                  />
+                <div key={img.id || index} className="relative group">
+                  <img src={img.url} alt={img.name} className="w-full h-24 object-cover rounded-lg" />
                   <button
                     onClick={() => {
-                      const newImages = uploadedImages.filter((_, i) => i !== index);
-                      setUploadedImages(newImages);
-                      // Persist immediately if no images left or after removing
-                      updateLesson(selectedLesson.id, { 
-                        content: newImages.length > 0 
-                          ? { type: 'gallery' as any, data: JSON.stringify({ files: newImages }) }
-                          : undefined 
-                      });
-                      debouncedSaveCourse();
+                      const nextImages = uploadedImages.filter((_, i) => i !== index);
+                      setUploadedImages(nextImages);
+                      persistLesson({ attachments: nextImages, content: { type: 'gallery', data: '' } });
                     }}
                     className="absolute top-1 right-1 p-1 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
                   >
@@ -638,25 +505,19 @@ function LessonEditor() {
             courseId={currentCourse?.id}
             lessonId={selectedLesson.id}
             onUploadComplete={(files) => {
-              const newImages = [...uploadedImages, ...files];
-              setUploadedImages(newImages);
-              updateLesson(selectedLesson.id, { 
-                content: { type: 'gallery' as any, data: JSON.stringify({ files: newImages }) }
-              });
-              debouncedSaveCourse();
+              const nextImages = [...uploadedImages, ...toAttachments(files)];
+              setUploadedImages(nextImages);
+              persistLesson({ attachments: nextImages, content: { type: 'gallery', data: '' } });
             }}
             onUploadError={(error) => console.error('Upload error:', error)}
           />
         </Card>
       )}
 
-      {/* VIDEO UPLOAD / URL */}
       {lessonType === 'video' && (
         <div className="space-y-4">
           <Card className="p-4 space-y-4">
             <label className="text-sm font-medium block">Video Source</label>
-            
-            {/* External Video URL */}
             <div>
               <label className="text-xs text-muted-foreground mb-1 block">External URL (YouTube, Vimeo, etc.)</label>
               <div className="relative">
@@ -667,46 +528,30 @@ function LessonEditor() {
                   value={externalVideoUrl}
                   onChange={(e) => {
                     setExternalVideoUrl(e.target.value);
-                    updateLesson(selectedLesson.id, { videoUrl: e.target.value });
+                    if (e.target.value) setUploadedVideo(null);
+                    persistLesson({ videoUrl: e.target.value, attachments: e.target.value ? [] : selectedLesson.attachments, content: { type: 'video', data: '' } });
                   }}
                 />
               </div>
             </div>
 
             <div className="relative">
-              <div className="absolute inset-0 flex items-center">
-                <span className="w-full border-t" />
-              </div>
-              <div className="relative flex justify-center text-xs uppercase">
-                <span className="bg-card px-2 text-muted-foreground">Or upload</span>
-              </div>
+              <div className="absolute inset-0 flex items-center"><span className="w-full border-t" /></div>
+              <div className="relative flex justify-center text-xs uppercase"><span className="bg-card px-2 text-muted-foreground">Or upload</span></div>
             </div>
 
-            {/* Video Upload */}
             {uploadedVideo ? (
               <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
                 <div className="flex items-center gap-3">
                   <PlayCircle className="h-8 w-8 text-purple-500" />
                   <div className="flex-1">
                     <p className="font-medium">{uploadedVideo.name}</p>
-                    <a 
-                      href={uploadedVideo.url} 
-                      target="_blank" 
-                      rel="noopener noreferrer"
-                      className="text-sm text-primary hover:underline"
-                    >
-                      View Video
-                    </a>
+                    <a href={uploadedVideo.url} target="_blank" rel="noopener noreferrer" className="text-sm text-primary hover:underline">Open video</a>
                   </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => {
-                      setUploadedVideo(null);
-                      updateLesson(selectedLesson.id, { videoUrl: undefined });
-                      debouncedSaveCourse();
-                    }}
-                  >
+                  <Button variant="ghost" size="sm" onClick={() => {
+                    setUploadedVideo(null);
+                    persistLesson({ videoUrl: '', attachments: [], content: { type: 'video', data: '' } });
+                  }}>
                     <X className="h-4 w-4" />
                   </Button>
                 </div>
@@ -717,47 +562,25 @@ function LessonEditor() {
                 courseId={currentCourse?.id}
                 lessonId={selectedLesson.id}
                 onUploadComplete={(files) => {
-                  if (files.length > 0) {
-                    setUploadedVideo(files[0]);
-                    updateLesson(selectedLesson.id, { videoUrl: files[0].url });
-                    debouncedSaveCourse();
-                  }
+                  const attachment = toAttachments(files)[0];
+                  if (!attachment) return;
+                  setUploadedVideo(attachment);
+                  setExternalVideoUrl('');
+                  persistLesson({ videoUrl: attachment.url, attachments: [attachment], content: { type: 'video', data: '' } });
                 }}
                 onUploadError={(error) => console.error('Upload error:', error)}
               />
             )}
           </Card>
 
-          {/* Video Preview */}
           {(uploadedVideo?.url || externalVideoUrl) && (
             <div className="aspect-video rounded-lg overflow-hidden bg-black border">
               {externalVideoUrl && (externalVideoUrl.includes('youtube.com') || externalVideoUrl.includes('youtu.be')) ? (
-                <iframe
-                  className="w-full h-full"
-                  src={(() => {
-                    const url = externalVideoUrl;
-                    if (url.includes('watch?v=')) return url.replace('watch?v=', 'embed/');
-                    if (url.includes('youtu.be/')) return url.replace('youtu.be/', 'youtube.com/embed/');
-                    return url;
-                  })()}
-                  title="Lesson Preview"
-                  frameBorder="0"
-                  allowFullScreen
-                />
+                <iframe className="w-full h-full" src={externalVideoUrl.includes('watch?v=') ? externalVideoUrl.replace('watch?v=', 'embed/') : externalVideoUrl.replace('youtu.be/', 'youtube.com/embed/')} title="Lesson Preview" frameBorder="0" allowFullScreen />
               ) : externalVideoUrl && externalVideoUrl.includes('vimeo.com') ? (
-                <iframe
-                  className="w-full h-full"
-                  src={externalVideoUrl.replace('vimeo.com/', 'player.vimeo.com/video/')}
-                  title="Lesson Preview"
-                  frameBorder="0"
-                  allowFullScreen
-                />
+                <iframe className="w-full h-full" src={externalVideoUrl.replace('vimeo.com/', 'player.vimeo.com/video/')} title="Lesson Preview" frameBorder="0" allowFullScreen />
               ) : (
-                <video 
-                  className="w-full h-full" 
-                  controls 
-                  src={uploadedVideo?.url || externalVideoUrl} 
-                />
+                <video className="w-full h-full" controls src={uploadedVideo?.url || externalVideoUrl} />
               )}
             </div>
           )}
@@ -798,8 +621,8 @@ export function CourseEditor() {
     if (course) {
       setCurrentCourse(course);
       setBreadcrumbs([
-        { label: 'Courses', href: '/courses' },
-        { label: course.title, href: `/courses/${course.id}` },
+        { label: 'Courses', href: '/admin/courses' },
+        { label: course.title, href: `/admin/courses/${course.id}/edit` },
         { label: 'Edit' },
       ]);
     }
@@ -833,7 +656,7 @@ export function CourseEditor() {
       {/* Top Bar */}
       <header className="h-14 border-b flex items-center justify-between px-4 bg-background">
         <div className="flex items-center gap-4">
-          <Button variant="ghost" size="icon" onClick={() => navigate('/courses')}>
+          <Button variant="ghost" size="icon" onClick={() => navigate('/admin/courses')}>
             <ChevronLeft className="h-5 w-5" />
           </Button>
           <div>

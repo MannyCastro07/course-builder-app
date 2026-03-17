@@ -49,3 +49,5 @@ coverage
 *.pem
 .cache
 .parcel-cache
+local-uploads/
+tmp-*

@@ -1,10 +1,14 @@
 import { createBrowserRouter, Navigate } from 'react-router-dom';
+import type { ReactNode } from 'react';
 import { useAuthStore } from '@/stores';
 import { MainLayout } from '@/components/layout';
+import { getDefaultRouteForRole, isRoleAllowed, type AppRole } from '@/utils/auth';
 import {
   Login,
   Register,
-  Dashboard,
+  AdminDashboard,
+  AgentDashboard,
+  TraineeDashboard,
   Courses,
   CourseEditor,
   CreateCourseWizard,
@@ -13,20 +17,38 @@ import {
   Settings,
 } from '@/pages';
 
-// Protected route wrapper
-function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
-  return isAuthenticated ? <>{children}</> : <Navigate to="/login" replace />;
+function ProtectedRoute({ children, allowedRoles }: { children: ReactNode; allowedRoles?: AppRole[] }) {
+  const { isAuthenticated, user } = useAuthStore((state) => ({
+    isAuthenticated: state.isAuthenticated,
+    user: state.user,
+  }));
+
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />;
+  }
+
+  if (!isRoleAllowed(user?.role, allowedRoles)) {
+    return <Navigate to={getDefaultRouteForRole(user?.role)} replace />;
+  }
+
+  return <>{children}</>;
 }
 
-// Public route wrapper (redirects to dashboard if authenticated)
-function PublicRoute({ children }: { children: React.ReactNode }) {
-  const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
-  return !isAuthenticated ? <>{children}</> : <Navigate to="/dashboard" replace />;
+function PublicRoute({ children }: { children: ReactNode }) {
+  const { isAuthenticated, user } = useAuthStore((state) => ({
+    isAuthenticated: state.isAuthenticated,
+    user: state.user,
+  }));
+
+  return !isAuthenticated ? <>{children}</> : <Navigate to={getDefaultRouteForRole(user?.role)} replace />;
+}
+
+function RoleHomeRedirect() {
+  const user = useAuthStore((state) => state.user);
+  return <Navigate to={getDefaultRouteForRole(user?.role)} replace />;
 }
 
 export const router = createBrowserRouter([
-  // Public routes
   {
     path: '/login',
     element: (
@@ -47,50 +69,38 @@ export const router = createBrowserRouter([
     path: '/forgot-password',
     element: (
       <PublicRoute>
-        <div>Recuperar contraseña (pendiente)</div>
+        <div>Password recovery is coming soon.</div>
       </PublicRoute>
     ),
   },
-
-  // Protected routes
   {
     path: '/',
     element: (
       <ProtectedRoute>
+        <RoleHomeRedirect />
+      </ProtectedRoute>
+    ),
+  },
+  {
+    path: '/admin',
+    element: (
+      <ProtectedRoute allowedRoles={['super_admin', 'admin']}>
         <MainLayout />
       </ProtectedRoute>
     ),
     children: [
-      {
-        index: true,
-        element: <Navigate to="/dashboard" replace />,
-      },
-      {
-        path: 'dashboard',
-        element: <Dashboard />,
-      },
+      { index: true, element: <Navigate to="dashboard" replace /> },
+      { path: 'dashboard', element: <AdminDashboard /> },
       {
         path: 'courses',
         children: [
-          {
-            index: true,
-            element: <Courses />,
-          },
-          {
-            path: 'new',
-            element: <CreateCourseWizard />,
-          },
+          { index: true, element: <Courses /> },
+          { path: 'new', element: <CreateCourseWizard /> },
           {
             path: ':courseId',
             children: [
-              {
-                index: true,
-                element: <div>Detalle del curso (pendiente)</div>,
-              },
-              {
-                path: 'edit',
-                element: <CourseEditor />,
-              },
+              { index: true, element: <div>Course detail is coming soon.</div> },
+              { path: 'edit', element: <CourseEditor /> },
             ],
           },
         ],
@@ -98,46 +108,64 @@ export const router = createBrowserRouter([
       {
         path: 'students',
         children: [
-          {
-            index: true,
-            element: <Students />,
-          },
-          {
-            path: ':studentId',
-            element: <div>Detalle del estudiante (pendiente)</div>,
-          },
-          {
-            path: 'new',
-            element: <div>Nuevo estudiante (pendiente)</div>,
-          },
-          {
-            path: 'import',
-            element: <div>Importar estudiantes (pendiente)</div>,
-          },
+          { index: true, element: <Students /> },
+          { path: ':studentId', element: <div>Student detail is coming soon.</div> },
+          { path: 'new', element: <div>New student flow is coming soon.</div> },
+          { path: 'import', element: <div>Student import is coming soon.</div> },
         ],
       },
-      {
-        path: 'reports',
-        element: <Reports />,
-      },
-      {
-        path: 'settings',
-        element: <Settings />,
-      },
-      {
-        path: 'profile',
-        element: <div>Perfil (pendiente)</div>,
-      },
-      {
-        path: 'help',
-        element: <div>Ayuda (pendiente)</div>,
-      },
+      { path: 'reports', element: <Reports /> },
+      { path: 'settings', element: <Settings /> },
     ],
   },
-
-  // Catch all
+  {
+    path: '/agent',
+    element: (
+      <ProtectedRoute allowedRoles={['agent']}>
+        <MainLayout />
+      </ProtectedRoute>
+    ),
+    children: [
+      { index: true, element: <Navigate to="dashboard" replace /> },
+      { path: 'dashboard', element: <AgentDashboard /> },
+      { path: 'courses', element: <Courses /> },
+    ],
+  },
+  {
+    path: '/learn',
+    element: (
+      <ProtectedRoute allowedRoles={['trainee']}>
+        <MainLayout />
+      </ProtectedRoute>
+    ),
+    children: [
+      { index: true, element: <Navigate to="dashboard" replace /> },
+      { path: 'dashboard', element: <TraineeDashboard /> },
+      { path: 'courses', element: <Courses /> },
+    ],
+  },
+  {
+    path: '/help',
+    element: (
+      <ProtectedRoute>
+        <MainLayout>
+          <div>Help center is coming soon.</div>
+        </MainLayout>
+      </ProtectedRoute>
+    ),
+  },
+  {
+    path: '/profile',
+    element: (
+      <ProtectedRoute>
+        <MainLayout>
+          <div>Profile is coming soon.</div>
+        </MainLayout>
+      </ProtectedRoute>
+    ),
+  },
   {
     path: '*',
-    element: <div>404 - Página no encontrada</div>,
+    element: <div>404 - Page not found</div>,
   },
 ]);
