@@ -153,7 +153,13 @@ export interface Lesson {
   duration: number;
   isPreview: boolean;
   videoUrl?: string;
+  videoSource?: 'vimeo' | 'wistia' | 'upload' | 'embed';
   attachments: Attachment[];
+  backgroundImage?: string;
+  isPasswordProtected?: boolean;
+  password?: string;
+  completionRule?: 'visit' | 'watch_100' | 'watch_percent' | 'quiz_pass';
+  completionPercentage?: number;
   createdAt: Date;
   updatedAt: Date;
 }

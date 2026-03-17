@@ -5,8 +5,10 @@ import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSo
 import { CSS } from '@dnd-kit/utilities';
 import { useUIStore, useCourseStore } from '@/stores';
 import { useCourse } from '@/hooks';
-import { Button, Input, Textarea, Badge, Card } from '@/components/ui';
+import { Button, Input, Textarea, Badge, Label, RadioGroup, RadioGroupItem, Switch } from '@/components/ui';
 import { FileUpload } from '@/components/common/FileUpload';
+import { FileUploader } from '@/components/ui/FileUploader';
+import { CourseStartOptions } from '@/components/course/CourseStartOptions';
 import {
   Sheet,
   SheetContent,
@@ -39,6 +41,8 @@ import { cn } from '@/utils';
 import type { Section, Lesson, Attachment } from '@/types';
 import { createAttachmentFromUpload } from '@/utils/lessonContent';
 import type { UploadResult } from '@/services/storageService';
+import { courseService } from '@/services/courseService';
+import { toast } from 'react-hot-toast';
 
 // Sortable Section Item
 function SortableSection({ section, index, isExpanded, onToggle }: { section: Section; index: number; isExpanded: boolean; onToggle: () => void }) {
@@ -77,7 +81,7 @@ function SortableSection({ section, index, isExpanded, onToggle }: { section: Se
         <div {...attributes} {...listeners} className="cursor-grab active:cursor-grabbing p-1 hover:bg-slate-100 rounded">
           <GripVertical className="h-4 w-4 text-slate-400" />
         </div>
-        
+
         <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-100 text-xs font-bold text-slate-500">
           {index + 1}
         </div>
@@ -101,7 +105,7 @@ function SortableSection({ section, index, isExpanded, onToggle }: { section: Se
           >
             <Trash2 className="h-4 w-4" />
           </button>
-          <button 
+          <button
             onClick={(e) => { e.stopPropagation(); onToggle(); }}
             className="p-1.5 hover:bg-slate-100 rounded-md text-slate-400"
           >
@@ -194,7 +198,7 @@ function ActivityModal({
 function LessonList({ sectionId, lessons }: { sectionId: string; lessons: Lesson[] }) {
   const { selectedLesson, selectLesson, addLesson, reorderLessons } = useCourseStore();
   const [isActivityModalOpen, setIsActivityModalOpen] = React.useState(false);
-  
+
   const sensors = useSensors(
     useSensor(PointerSensor),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
@@ -235,7 +239,7 @@ function LessonList({ sectionId, lessons }: { sectionId: string; lessons: Lesson
           ))}
         </SortableContext>
       </DndContext>
-      
+
       <Button
         variant="ghost"
         size="sm"
@@ -389,168 +393,82 @@ function LessonEditor() {
       </div>
     );
   }
+  const handleUpload = async (file: File) => {
+    try {
+      return await courseService.uploadAsset(file);
+    } catch (err) {
+      toast.error('Failed to upload file');
+      throw err;
+    }
+  };
 
   return (
-    <div className="space-y-4">
-      <div>
-        <label className="text-sm font-medium mb-2 block">Lesson Title</label>
-        <Input value={selectedLesson.title} onChange={(e) => persistLesson({ title: e.target.value })} />
-      </div>
-
-      <div>
-        <label className="text-sm font-medium mb-2 block">Description</label>
-        <Textarea value={selectedLesson.description || ''} onChange={(e) => persistLesson({ description: e.target.value })} rows={3} />
-      </div>
-
-      <div className="grid grid-cols-2 gap-4">
+    <div className="space-y-8 pb-10">
+      <div className="space-y-4">
         <div>
-          <label className="text-sm font-medium mb-2 block">Type</label>
-          <select className="w-full h-9 rounded-md border border-input bg-transparent px-3" value={lessonType} onChange={(e) => handleTypeChange(e.target.value as Lesson['type'])}>
-            <option value="text">Text</option>
-            <option value="pdf">PDF</option>
-            <option value="download">Document</option>
-            <option value="image">Image</option>
-            <option value="video">Video</option>
-            <option value="quiz">Quiz</option>
-            <option value="assignment">Assignment</option>
-          </select>
+          <Label className="text-sm font-medium mb-2 block">Lesson Title</Label>
+          <Input value={selectedLesson.title} onChange={(e) => persistLesson({ title: e.target.value })} />
         </div>
+
         <div>
-          <label className="text-sm font-medium mb-2 block">Duration (min)</label>
-          <Input type="number" value={Math.round((selectedLesson.duration || 0) / 60)} onChange={(e) => persistLesson({ duration: (parseInt(e.target.value || '0', 10) || 0) * 60 })} />
+           <Label className="text-sm font-medium mb-2 block">Description</Label>
+           <Textarea value={selectedLesson.description || ''} onChange={(e) => persistLesson({ description: e.target.value })} rows={3} placeholder="What will students learn in this lesson?" />
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <Label className="text-sm font-medium mb-2 block">Type</Label>
+            <select className="w-full h-9 rounded-md border border-input bg-transparent px-3" value={lessonType} onChange={(e) => handleTypeChange(e.target.value as Lesson['type'])}>
+              <option value="text">Text</option>
+              <option value="pdf">PDF</option>
+              <option value="download">Document</option>
+              <option value="image">Image</option>
+              <option value="video">Video</option>
+              <option value="quiz">Quiz</option>
+              <option value="assignment">Assignment</option>
+            </select>
+          </div>
+          <div>
+            <Label className="text-sm font-medium mb-2 block">Duration (min)</Label>
+            <Input type="number" value={Math.round((selectedLesson.duration || 0) / 60)} onChange={(e) => persistLesson({ duration: (parseInt(e.target.value || '0', 10) || 0) * 60 })} />
+          </div>
         </div>
       </div>
 
-      <div className="flex items-center gap-2">
-        <input type="checkbox" id="isPreview" checked={selectedLesson.isPreview} onChange={(e) => persistLesson({ isPreview: e.target.checked })} />
-        <label htmlFor="isPreview" className="text-sm">Allow Preview</label>
-      </div>
+      {/* Type specific content fields */}
+      <div className="border-t pt-6 space-y-6">
+        
+        {/* TEXT LESSON */}
+        {lessonType === 'text' && (
+           <div className="space-y-4">
+             <Label className="text-base font-semibold">Content</Label>
+             <Textarea
+               placeholder="Write lesson content here..."
+               rows={10}
+               value={textContent}
+               onChange={(e) => {
+                 setTextContent(e.target.value);
+                 persistLesson({ content: { type: 'rich-text', data: e.target.value } });
+               }}
+             />
+           </div>
+        )}
 
-      {lessonType === 'text' && (
-        <Card className="p-4">
-          <label className="text-sm font-medium mb-2 block">Content</label>
-          <Textarea
-            placeholder="Write lesson content here..."
-            rows={10}
-            value={textContent}
-            onChange={(e) => {
-              setTextContent(e.target.value);
-              persistLesson({ content: { type: 'rich-text', data: e.target.value } });
-            }}
-          />
-        </Card>
-      )}
-
-      {(lessonType === 'pdf' || lessonType === 'download') && (
-        <Card className="p-4 space-y-4">
-          <label className="text-sm font-medium block">{lessonType === 'pdf' ? 'PDF Document' : 'Document Download'}</label>
-          {uploadedFile ? (
-            <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
-              <div className="flex items-center gap-3">
-                <FileText className="h-8 w-8 text-red-500" />
-                <div className="flex-1">
-                  <p className="font-medium">{uploadedFile.name}</p>
-                  <a href={uploadedFile.url} target="_blank" rel="noopener noreferrer" className="text-sm text-primary hover:underline">Open file</a>
-                </div>
-                <Button variant="ghost" size="sm" onClick={() => {
-                  setUploadedFile(null);
-                  persistLesson({ attachments: [], content: { type: 'file', data: '' } });
-                }}>
-                  <X className="h-4 w-4" />
-                </Button>
-              </div>
-            </div>
-          ) : (
-            <FileUpload
-              accept={lessonType === 'pdf' ? 'pdf' : 'document'}
-              courseId={currentCourse?.id}
-              lessonId={selectedLesson.id}
-              onUploadComplete={(files) => {
-                const attachment = toAttachments(files)[0];
-                if (!attachment) return;
-                setUploadedFile(attachment);
-                persistLesson({ attachments: [attachment], content: { type: 'file', data: '' } });
-              }}
-              onUploadError={(error) => console.error('Upload error:', error)}
-            />
-          )}
-        </Card>
-      )}
-
-      {lessonType === 'image' && (
-        <Card className="p-4 space-y-4">
-          <label className="text-sm font-medium block">Image Gallery</label>
-          {uploadedImages.length > 0 && (
-            <div className="grid grid-cols-3 gap-2">
-              {uploadedImages.map((img, index) => (
-                <div key={img.id || index} className="relative group">
-                  <img src={img.url} alt={img.name} className="w-full h-24 object-cover rounded-lg" />
-                  <button
-                    onClick={() => {
-                      const nextImages = uploadedImages.filter((_, i) => i !== index);
-                      setUploadedImages(nextImages);
-                      persistLesson({ attachments: nextImages, content: { type: 'gallery', data: '' } });
-                    }}
-                    className="absolute top-1 right-1 p-1 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
-                  >
-                    <X className="h-3 w-3" />
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-          <FileUpload
-            accept="image"
-            multiple
-            courseId={currentCourse?.id}
-            lessonId={selectedLesson.id}
-            onUploadComplete={(files) => {
-              const nextImages = [...uploadedImages, ...toAttachments(files)];
-              setUploadedImages(nextImages);
-              persistLesson({ attachments: nextImages, content: { type: 'gallery', data: '' } });
-            }}
-            onUploadError={(error) => console.error('Upload error:', error)}
-          />
-        </Card>
-      )}
-
-      {lessonType === 'video' && (
-        <div className="space-y-4">
-          <Card className="p-4 space-y-4">
-            <label className="text-sm font-medium block">Video Source</label>
-            <div>
-              <label className="text-xs text-muted-foreground mb-1 block">External URL (YouTube, Vimeo, etc.)</label>
-              <div className="relative">
-                <LinkIcon className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-                <Input
-                  className="pl-9"
-                  placeholder="https://www.youtube.com/watch?v=..."
-                  value={externalVideoUrl}
-                  onChange={(e) => {
-                    setExternalVideoUrl(e.target.value);
-                    if (e.target.value) setUploadedVideo(null);
-                    persistLesson({ videoUrl: e.target.value, attachments: e.target.value ? [] : selectedLesson.attachments, content: { type: 'video', data: '' } });
-                  }}
-                />
-              </div>
-            </div>
-
-            <div className="relative">
-              <div className="absolute inset-0 flex items-center"><span className="w-full border-t" /></div>
-              <div className="relative flex justify-center text-xs uppercase"><span className="bg-card px-2 text-muted-foreground">Or upload</span></div>
-            </div>
-
-            {uploadedVideo ? (
+        {/* PDF & DOCUMENT DOWNLOAD LESSON */}
+        {(lessonType === 'pdf' || lessonType === 'download') && (
+          <div className="space-y-4">
+            <Label className="text-base font-semibold">{lessonType === 'pdf' ? 'PDF Document' : 'Document Download'}</Label>
+            {uploadedFile ? (
               <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
                 <div className="flex items-center gap-3">
-                  <PlayCircle className="h-8 w-8 text-purple-500" />
+                  <FileText className="h-8 w-8 text-red-500" />
                   <div className="flex-1">
-                    <p className="font-medium">{uploadedVideo.name}</p>
-                    <a href={uploadedVideo.url} target="_blank" rel="noopener noreferrer" className="text-sm text-primary hover:underline">Open video</a>
+                    <p className="font-medium">{uploadedFile.name}</p>
+                    <a href={uploadedFile.url} target="_blank" rel="noopener noreferrer" className="text-sm text-primary hover:underline">Open file</a>
                   </div>
                   <Button variant="ghost" size="sm" onClick={() => {
-                    setUploadedVideo(null);
-                    persistLesson({ videoUrl: '', attachments: [], content: { type: 'video', data: '' } });
+                    setUploadedFile(null);
+                    persistLesson({ attachments: [], content: { type: 'file', data: '' } });
                   }}>
                     <X className="h-4 w-4" />
                   </Button>
@@ -558,34 +476,251 @@ function LessonEditor() {
               </div>
             ) : (
               <FileUpload
-                accept="video"
+                accept={lessonType === 'pdf' ? 'pdf' : 'document'}
                 courseId={currentCourse?.id}
                 lessonId={selectedLesson.id}
                 onUploadComplete={(files) => {
                   const attachment = toAttachments(files)[0];
                   if (!attachment) return;
-                  setUploadedVideo(attachment);
-                  setExternalVideoUrl('');
-                  persistLesson({ videoUrl: attachment.url, attachments: [attachment], content: { type: 'video', data: '' } });
+                  setUploadedFile(attachment);
+                  persistLesson({ attachments: [attachment], content: { type: 'file', data: '' } });
                 }}
                 onUploadError={(error) => console.error('Upload error:', error)}
               />
             )}
-          </Card>
+          </div>
+        )}
 
-          {(uploadedVideo?.url || externalVideoUrl) && (
-            <div className="aspect-video rounded-lg overflow-hidden bg-black border">
-              {externalVideoUrl && (externalVideoUrl.includes('youtube.com') || externalVideoUrl.includes('youtu.be')) ? (
-                <iframe className="w-full h-full" src={externalVideoUrl.includes('watch?v=') ? externalVideoUrl.replace('watch?v=', 'embed/') : externalVideoUrl.replace('youtu.be/', 'youtube.com/embed/')} title="Lesson Preview" frameBorder="0" allowFullScreen />
-              ) : externalVideoUrl && externalVideoUrl.includes('vimeo.com') ? (
-                <iframe className="w-full h-full" src={externalVideoUrl.replace('vimeo.com/', 'player.vimeo.com/video/')} title="Lesson Preview" frameBorder="0" allowFullScreen />
+        {/* IMAGE GALLERY LESSON */}
+        {lessonType === 'image' && (
+          <div className="space-y-4">
+            <Label className="text-base font-semibold">Image Gallery</Label>
+            {uploadedImages.length > 0 && (
+              <div className="grid grid-cols-3 gap-2">
+                {uploadedImages.map((img, index) => (
+                  <div key={img.id || index} className="relative group">
+                    <img src={img.url} alt={img.name} className="w-full h-24 object-cover rounded-lg" />
+                    <button
+                      onClick={() => {
+                        const nextImages = uploadedImages.filter((_, i) => i !== index);
+                        setUploadedImages(nextImages);
+                        persistLesson({ attachments: nextImages, content: { type: 'gallery', data: '' } });
+                      }}
+                      className="absolute top-1 right-1 p-1 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <FileUpload
+              accept="image"
+              multiple
+              courseId={currentCourse?.id}
+              lessonId={selectedLesson.id}
+              onUploadComplete={(files) => {
+                const nextImages = [...uploadedImages, ...toAttachments(files)];
+                setUploadedImages(nextImages);
+                persistLesson({ attachments: nextImages, content: { type: 'gallery', data: '' } });
+              }}
+              onUploadError={(error) => console.error('Upload error:', error)}
+            />
+          </div>
+        )}
+
+        {/* VIDEO LESSON */}
+        {lessonType === 'video' && (
+          <div className="space-y-4">
+            <Label className="text-base font-semibold">Video Source</Label>
+            <RadioGroup
+              value={selectedLesson.videoSource || 'embed'}
+              onValueChange={(val) => persistLesson({ videoSource: val as any })}
+              className="space-y-3 mb-6"
+            >
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="upload" id="v-upload" />
+                <Label htmlFor="v-upload" className="font-normal cursor-pointer">Upload Video File</Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="vimeo" id="v-vimeo" />
+                <Label htmlFor="v-vimeo" className="font-normal cursor-pointer">From Vimeo</Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="wistia" id="v-wistia" />
+                <Label htmlFor="v-wistia" className="font-normal cursor-pointer">From Wistia</Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="embed" id="v-embed" />
+                <Label htmlFor="v-embed" className="font-normal cursor-pointer">Embed Link (YouTube/Vimeo)</Label>
+              </div>
+            </RadioGroup>
+
+            {selectedLesson.videoSource === 'upload' && (
+              uploadedVideo ? (
+                <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
+                  <div className="flex items-center gap-3">
+                    <PlayCircle className="h-8 w-8 text-purple-500" />
+                    <div className="flex-1">
+                      <p className="font-medium">{uploadedVideo.name}</p>
+                      <a href={uploadedVideo.url} target="_blank" rel="noopener noreferrer" className="text-sm text-primary hover:underline">Open video</a>
+                    </div>
+                    <Button variant="ghost" size="sm" onClick={() => {
+                      setUploadedVideo(null);
+                      persistLesson({ videoUrl: '', attachments: [], content: { type: 'video', data: '' } });
+                    }}>
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
               ) : (
-                <video className="w-full h-full" controls src={uploadedVideo?.url || externalVideoUrl} />
-              )}
-            </div>
-          )}
+                <FileUpload
+                  accept="video"
+                  courseId={currentCourse?.id}
+                  lessonId={selectedLesson.id}
+                  onUploadComplete={(files) => {
+                    const attachment = toAttachments(files)[0];
+                    if (!attachment) return;
+                    setUploadedVideo(attachment);
+                    setExternalVideoUrl('');
+                    persistLesson({ videoUrl: attachment.url, attachments: [attachment], content: { type: 'video', data: '' } });
+                  }}
+                  onUploadError={(error) => console.error('Upload error:', error)}
+                />
+              )
+            )}
+
+            {(selectedLesson.videoSource === 'vimeo' || selectedLesson.videoSource === 'wistia') && (
+              <div className="space-y-2">
+                <Label className="text-xs text-muted-foreground uppercase">Video ID</Label>
+                <Input
+                  placeholder={`Paste your ${selectedLesson.videoSource} ID here`}
+                  value={externalVideoUrl}
+                  onChange={(e) => {
+                    setExternalVideoUrl(e.target.value);
+                    setUploadedVideo(null);
+                    persistLesson({ videoUrl: e.target.value, attachments: e.target.value ? [] : selectedLesson.attachments, content: { type: 'video', data: '' } });
+                  }}
+                />
+              </div>
+            )}
+
+            {(selectedLesson.videoSource === 'embed' || !selectedLesson.videoSource) && (
+              <div className="space-y-2">
+                <Label className="text-xs text-muted-foreground uppercase">Video URL</Label>
+                <div className="relative">
+                  <LinkIcon className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    className="pl-9"
+                    placeholder="https://www.youtube.com/watch?v=..."
+                    value={externalVideoUrl}
+                    onChange={(e) => {
+                      setExternalVideoUrl(e.target.value);
+                      setUploadedVideo(null);
+                      persistLesson({ videoUrl: e.target.value, attachments: e.target.value ? [] : selectedLesson.attachments, content: { type: 'video', data: '' } });
+                    }}
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Preview Area for Video */}
+            {(uploadedVideo?.url || externalVideoUrl) && (
+              <div className="aspect-video rounded-lg overflow-hidden bg-black border mt-4">
+                {externalVideoUrl && (externalVideoUrl.includes('youtube.com') || externalVideoUrl.includes('youtu.be')) ? (
+                  <iframe className="w-full h-full" src={externalVideoUrl.includes('watch?v=') ? externalVideoUrl.replace('watch?v=', 'embed/') : externalVideoUrl.replace('youtu.be/', 'youtube.com/embed/')} title="Lesson Preview" frameBorder="0" allowFullScreen />
+                ) : externalVideoUrl && externalVideoUrl.includes('vimeo.com') ? (
+                  <iframe className="w-full h-full" src={externalVideoUrl.replace('vimeo.com/', 'player.vimeo.com/video/')} title="Lesson Preview" frameBorder="0" allowFullScreen />
+                ) : (
+                  <video className="w-full h-full" controls src={uploadedVideo?.url || externalVideoUrl} />
+                )}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Preview Setting */}
+      <div className="border-t pt-6 space-y-4">
+        <div className="flex items-center justify-between">
+          <Label className="text-base font-semibold">Allow Preview</Label>
+          <Switch
+            checked={selectedLesson.isPreview || false}
+            onCheckedChange={(checked) => persistLesson({ isPreview: checked })}
+          />
         </div>
-      )}
+        <p className="text-xs text-muted-foreground">
+          Allow unregistered users to preview this learning activity before enrolling.
+        </p>
+      </div>
+
+      {/* Digital Downloads */}
+      <div className="border-t pt-6 space-y-4">
+        <div className="flex items-center justify-between">
+          <Label className="text-base font-semibold">Digital Downloads</Label>
+          <Button variant="outline" size="sm" className="h-8 text-primary border-primary/20 hover:bg-primary/5">
+            Add digital download
+          </Button>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Do you also want to offer to your students a companion file along with your content? Add one or more files here.
+        </p>
+      </div>
+
+      {/* Background Image */}
+      <div className="border-t pt-6 space-y-4">
+        <Label className="text-base font-semibold">Learning activity background image</Label>
+        <p className="text-xs text-muted-foreground">
+          Set a background image for this learning activity. Just a few content templates take advantage of this image.
+        </p>
+        <FileUploader
+          label="Upload background"
+          previewType="image"
+          value={selectedLesson.backgroundImage}
+          onUpload={handleUpload}
+          onChange={(url) => persistLesson({ backgroundImage: url || '' })}
+          accept={{ 'image/*': ['.png', '.jpg', '.jpeg', '.webp'] }}
+        />
+      </div>
+
+      {/* Password Protection */}
+      <div className="border-t pt-6 space-y-4">
+        <div className="flex items-center justify-between">
+          <Label className="text-base font-semibold">Password protect access</Label>
+          <Switch
+            checked={selectedLesson.isPasswordProtected || false}
+            onCheckedChange={(checked) => persistLesson({ isPasswordProtected: checked })}
+          />
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Users will be asked for the password set below in order to be able to access this learning activity's content.
+        </p>
+        {selectedLesson.isPasswordProtected && (
+          <Input
+            type="password"
+            placeholder="Enter password"
+            value={selectedLesson.password || ''}
+            onChange={(e) => persistLesson({ password: e.target.value })}
+          />
+        )}
+      </div>
+
+      {/* Completion Rule */}
+      <div className="border-t pt-6 space-y-4">
+        <Label className="text-base font-semibold">Completion rule</Label>
+        <p className="text-xs text-muted-foreground">
+          Set the conditions a learner has to meet in order for this learning activity to be deemed complete.
+        </p>
+        <select
+          className="w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
+          value={selectedLesson.completionRule || 'visit'}
+          onChange={(e) => persistLesson({ completionRule: e.target.value as any })}
+        >
+          <option value="visit">Visits the Video (Interactive)</option>
+          <option value="watch_100">Watches 100% of the video</option>
+          <option value="watch_percent">Watches a percentage of the video</option>
+        </select>
+      </div>
     </div>
   );
 }
@@ -764,19 +899,12 @@ export function CourseEditor() {
             </div>
 
             {currentCourse.sections.length === 0 ? (
-              <Card className="border-dashed h-64 flex flex-col items-center justify-center p-8 text-center space-y-4">
-                <div className="bg-primary/10 p-4 rounded-full">
-                  <BookOpen className="h-8 w-8 text-primary" />
-                </div>
-                <div>
-                  <h3 className="text-lg font-semibold">Start building your course</h3>
-                  <p className="text-sm text-muted-foreground">Add your first section to begin crafting your content.</p>
-                </div>
-                <Button onClick={() => addSection({ title: 'New Section', lessons: [] })}>
-                  <Plus className="mr-2 h-4 w-4" />
-                  Create Section
-                </Button>
-              </Card>
+              <CourseStartOptions
+                onStartFromScratch={() => addSection({ title: 'New Section', lessons: [] })}
+                onStartWithAI={() => { /* TODO: Implement AI Assistant */ }}
+                onUploadFiles={() => { /* TODO: Implement Bulk Upload */ }}
+                onImportSync={() => { /* TODO: Implement Import */ }}
+              />
             ) : (
               <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
                 <SortableContext items={currentCourse.sections.map((s) => s.id)} strategy={verticalListSortingStrategy}>
@@ -835,7 +963,7 @@ export function CourseEditor() {
               <div className="pt-4 border-t">
                 <h4 className="text-sm font-semibold mb-4">Lessons in this section</h4>
                 <div className="space-y-2">
-                   <LessonList sectionId={selectedSection.id} lessons={selectedSection.lessons} />
+                  <LessonList sectionId={selectedSection.id} lessons={selectedSection.lessons} />
                 </div>
               </div>
 

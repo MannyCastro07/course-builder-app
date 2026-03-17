@@ -50,17 +50,20 @@ const mapLessonFromSupabase = (data: any): Lesson => {
   const normalized = normalizeLessonRecord(data);
 
   return {
+    ...normalized,
     id: data.id,
     sectionId: data.section_id,
     title: data.title,
-    description: normalized.description,
-    content: normalized.content,
     type: data.type as any,
     order: data.order,
     duration: data.duration,
     isPreview: data.is_free,
-    videoUrl: normalized.videoUrl,
-    attachments: normalized.attachments,
+    videoSource: data.video_source,
+    backgroundImage: data.background_image,
+    isPasswordProtected: data.is_password_protected,
+    password: data.password,
+    completionRule: data.completion_rule,
+    completionPercentage: data.completion_percentage,
     createdAt: new Date(data.created_at),
     updatedAt: new Date(data.updated_at || data.created_at),
   } as Lesson;
@@ -297,6 +300,12 @@ export const courseService = {
         is_free: data.isPreview || false,
         duration: data.duration || 0,
         video_url: data.videoUrl || null,
+        video_source: data.videoSource,
+        background_image: data.backgroundImage,
+        is_password_protected: data.isPasswordProtected,
+        password: data.password,
+        completion_rule: data.completionRule,
+        completion_percentage: data.completionPercentage,
       })
       .select()
       .single();
@@ -312,7 +321,13 @@ export const courseService = {
     if (data.order !== undefined) updates.order = data.order;
     if (data.isPreview !== undefined) updates.is_free = data.isPreview;
     if (data.duration !== undefined) updates.duration = data.duration;
-    if (data.videoUrl !== undefined) updates.video_url = data.videoUrl || null;
+    if (data.videoUrl !== undefined) updates.video_url = data.videoUrl;
+    if (data.videoSource !== undefined) updates.video_source = data.videoSource;
+    if (data.backgroundImage !== undefined) updates.background_image = data.backgroundImage;
+    if (data.isPasswordProtected !== undefined) updates.is_password_protected = data.isPasswordProtected;
+    if (data.password !== undefined) updates.password = data.password;
+    if (data.completionRule !== undefined) updates.completion_rule = data.completionRule;
+    if (data.completionPercentage !== undefined) updates.completion_percentage = data.completionPercentage;
 
     if (data.content !== undefined || data.attachments !== undefined || data.description !== undefined) {
       updates.content = serializeLessonContent(data);
@@ -342,5 +357,23 @@ export const courseService = {
 
   async getCourseAnalytics(_courseId: string) {
     return { enrollments: 120, completions: 45, revenue: 1200, rating: 4.8 };
+  },
+
+  async uploadAsset(file: File, bucket: string = 'course-assets'): Promise<string> {
+    const fileExt = file.name.split('.').pop();
+    const fileName = `${Math.random().toString(36).substring(2)}.${fileExt}`;
+    const filePath = `${fileName}`;
+
+    const { error } = await supabase.storage
+      .from(bucket)
+      .upload(filePath, file);
+
+    if (error) throw error;
+
+    const { data: { publicUrl } } = supabase.storage
+      .from(bucket)
+      .getPublicUrl(filePath);
+
+    return publicUrl;
   }
-};
+}

@@ -49,3 +49,4 @@ export { Label } from './label';
 export { RadioGroup, RadioGroupItem } from './radio-group';
 export { Progress } from './progress';
 export { Sheet, SheetTrigger, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetFooter, SheetClose } from './sheet';
+export { Switch } from './switch';

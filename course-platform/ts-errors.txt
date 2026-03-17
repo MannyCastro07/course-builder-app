@@ -1,0 +1,39 @@
+src/components/ui/FileUploader.tsx(3,47): error TS6133: 'ImageIcon' is declared but its value is never read.
+src/pages/CourseEditor.tsx(8,42): error TS6133: 'Card' is declared but its value is never read.
+src/pages/CourseEditor.tsx(319,10): error TS2393: Duplicate function implementation.
+src/pages/CourseEditor.tsx(320,41): error TS6133: 'currentCourse' is declared but its value is never read.
+src/pages/CourseEditor.tsx(354,9): error TS6133: 'handleTypeChange' is declared but its value is never read.
+src/pages/CourseEditor.tsx(384,9): error TS6133: 'toAttachments' is declared but its value is never read.
+src/pages/CourseEditor.tsx(398,6): error TS2559: Type '{ selectedLesson: Lesson; lessonType: "video" | "text" | "pdf" | "image" | "quiz" | "assignment" | "download"; setLessonType: (type: any) => void; hasUnsavedChanges: any; undo: any; ... 6 more ...; isSaving: any; }' has no properties in common with type 'IntrinsicAttributes'.
+src/pages/CourseEditor.tsx(403,9): error TS18004: No value exists in scope for the shorthand property 'hasUnsavedChanges'. Either declare one or provide an initializer.
+src/pages/CourseEditor.tsx(404,9): error TS2552: Cannot find name 'undo'. Did you mean 'Undo'?
+src/pages/CourseEditor.tsx(405,9): error TS2552: Cannot find name 'redo'. Did you mean 'Redo'?
+src/pages/CourseEditor.tsx(406,9): error TS18004: No value exists in scope for the shorthand property 'canUndo'. Either declare one or provide an initializer.
+src/pages/CourseEditor.tsx(407,9): error TS18004: No value exists in scope for the shorthand property 'canRedo'. Either declare one or provide an initializer.
+src/pages/CourseEditor.tsx(408,9): error TS18004: No value exists in scope for the shorthand property 'previewMode'. Either declare one or provide an initializer.
+src/pages/CourseEditor.tsx(409,9): error TS18004: No value exists in scope for the shorthand property 'setPreviewMode'. Either declare one or provide an initializer.
+src/pages/CourseEditor.tsx(411,9): error TS18004: No value exists in scope for the shorthand property 'isSaving'. Either declare one or provide an initializer.
+src/pages/CourseEditor.tsx(417,10): error TS2393: Duplicate function implementation.
+src/pages/CourseEditor.tsx(421,3): error TS6133: 'hasUnsavedChanges' is declared but its value is never read.
+src/pages/CourseEditor.tsx(422,3): error TS6133: 'undo' is declared but its value is never read.
+src/pages/CourseEditor.tsx(423,3): error TS6133: 'redo' is declared but its value is never read.
+src/pages/CourseEditor.tsx(424,3): error TS6133: 'canUndo' is declared but its value is never read.
+src/pages/CourseEditor.tsx(425,3): error TS6133: 'canRedo' is declared but its value is never read.
+src/pages/CourseEditor.tsx(426,3): error TS6133: 'previewMode' is declared but its value is never read.
+src/pages/CourseEditor.tsx(427,3): error TS6133: 'setPreviewMode' is declared but its value is never read.
+src/pages/CourseEditor.tsx(428,3): error TS6133: 'saveCourse' is declared but its value is never read.
+src/pages/CourseEditor.tsx(429,3): error TS6133: 'isSaving' is declared but its value is never read.
+src/pages/CourseEditor.tsx(430,4): error TS2304: Cannot find name 'LessonEditorProps'.
+src/pages/CourseEditor.tsx(432,29): error TS2304: Cannot find name 'useContentEditing'.
+src/pages/CourseEditor.tsx(433,43): error TS2304: Cannot find name 'useState'.
+src/pages/CourseEditor.tsx(436,47): error TS2304: Cannot find name 'useState'.
+src/pages/CourseEditor.tsx(439,45): error TS2304: Cannot find name 'useState'.
+src/pages/CourseEditor.tsx(442,41): error TS2304: Cannot find name 'useState'.
+src/pages/CourseEditor.tsx(447,51): error TS2304: Cannot find name 'useState'.
+src/pages/CourseEditor.tsx(543,38): error TS2304: Cannot find name 'toAttachments'.
+src/pages/CourseEditor.tsx(560,38): error TS7006: Parameter 'img' implicitly has an 'any' type.
+src/pages/CourseEditor.tsx(560,43): error TS7006: Parameter 'index' implicitly has an 'any' type.
+src/pages/CourseEditor.tsx(565,67): error TS7006: Parameter '_' implicitly has an 'any' type.
+src/pages/CourseEditor.tsx(565,70): error TS7006: Parameter 'i' implicitly has an 'any' type.
+src/pages/CourseEditor.tsx(583,59): error TS2304: Cannot find name 'toAttachments'.
+src/pages/CourseEditor.tsx(642,40): error TS2304: Cannot find name 'toAttachments'.

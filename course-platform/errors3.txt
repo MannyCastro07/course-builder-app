@@ -1,0 +1,1 @@
+src/components/ui/FileUploader.tsx(3,47): error TS6133: 'ImageIcon' is declared but its value is never read.
