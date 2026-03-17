@@ -1,4 +1,3 @@
-import React from 'react';
 import {
   PieChart as RechartsPieChart,
   Pie,
@@ -66,7 +65,7 @@ export function PieChart({
               paddingAngle={2}
               dataKey="value"
             >
-              {data.map((entry, index) => (
+              {data.map((_entry, index) => (
                 <Cell key={`cell-${index}`} fill={colors[index % colors.length]} />
               ))}
             </Pie>

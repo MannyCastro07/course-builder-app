@@ -56,7 +56,7 @@ export function useStudents(options: UseStudentsOptions = {}) {
   });
 
   // Bulk delete mutation
-  const bulkDeleteMutation = useMutation({
+  const bulkDeleteMutation = useMutation<void, Error, string[]>({
     mutationFn: studentService.bulkDeleteStudent,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [STUDENTS_KEY] });
@@ -86,7 +86,7 @@ export function useStudents(options: UseStudentsOptions = {}) {
   });
 
   // Bulk enroll mutation
-  const bulkEnrollMutation = useMutation({
+  const bulkEnrollMutation = useMutation<void, Error, { studentIds: string[]; courseId: string }>({
     mutationFn: studentService.bulkEnroll,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [STUDENTS_KEY] });
@@ -130,8 +130,6 @@ export function useStudents(options: UseStudentsOptions = {}) {
 
 // Hook to get a single student
 export function useStudent(id: string | undefined) {
-  const queryClient = useQueryClient();
-
   const studentQuery = useQuery({
     queryKey: [STUDENT_KEY, id],
     queryFn: () => studentService.getStudent(id!),

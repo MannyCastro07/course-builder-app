@@ -1,16 +1,14 @@
-import React from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Link } from 'react-router-dom';
-import { cn } from '@/utils';
 import { useAuth } from '@/hooks';
 import { Button, Input, Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui';
-import { GraduationCap, Mail, Lock, Eye, EyeOff } from 'lucide-react';
+import { GraduationCap, Mail, Lock } from 'lucide-react';
 
 const loginSchema = z.object({
-  email: z.string().email('Correo electrónico inválido'),
-  password: z.string().min(1, 'La contraseña es requerida'),
+  email: z.string().email('Invalid email address'),
+  password: z.string().min(1, 'Password is required'),
   rememberMe: z.boolean().optional(),
 });
 
@@ -18,7 +16,6 @@ type LoginFormData = z.infer<typeof loginSchema>;
 
 export function Login() {
   const { login, isLoggingIn } = useAuth();
-  const [showPassword, setShowPassword] = React.useState(false);
 
   const {
     register,
@@ -54,18 +51,18 @@ export function Login() {
 
         <Card>
           <CardHeader className="space-y-1">
-            <CardTitle className="text-2xl text-center">Iniciar sesión</CardTitle>
+            <CardTitle className="text-2xl text-center">Sign In</CardTitle>
             <CardDescription className="text-center">
-              Ingresa tus credenciales para acceder a tu cuenta
+              Enter your credentials to access your account
             </CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
               <div>
                 <Input
-                  label="Correo electrónico"
+                  label="Email"
                   type="email"
-                  placeholder="tu@email.com"
+                  placeholder="you@company.com"
                   leftIcon={<Mail className="h-4 w-4" />}
                   error={errors.email?.message}
                   {...register('email')}
@@ -74,8 +71,8 @@ export function Login() {
 
               <div>
                 <Input
-                  label="Contraseña"
-                  type={showPassword ? 'text' : 'password'}
+                  label="Password"
+                  type="password"
                   placeholder="••••••••"
                   leftIcon={<Lock className="h-4 w-4" />}
                   error={errors.password?.message}
@@ -90,13 +87,13 @@ export function Login() {
                     className="h-4 w-4 rounded border-gray-300"
                     {...register('rememberMe')}
                   />
-                  <span>Recordarme</span>
+                  <span>Remember me</span>
                 </label>
                 <Link
                   to="/forgot-password"
                   className="text-sm text-primary hover:underline"
                 >
-                  ¿Olvidaste tu contraseña?
+                  Forgot password?
                 </Link>
               </div>
 
@@ -105,15 +102,15 @@ export function Login() {
                 className="w-full"
                 loading={isLoggingIn}
               >
-                Iniciar sesión
+                Sign In
               </Button>
             </form>
 
             <div className="mt-6 text-center">
               <p className="text-sm text-muted-foreground">
-                ¿No tienes una cuenta?{' '}
+                Don't have an account?{' '}
                 <Link to="/register" className="text-primary hover:underline">
-                  Regístrate
+                  Create one
                 </Link>
               </p>
             </div>
@@ -122,13 +119,13 @@ export function Login() {
 
         {/* Footer */}
         <p className="mt-8 text-center text-sm text-muted-foreground">
-          Al iniciar sesión, aceptas nuestros{' '}
+          By signing in, you agree to our{' '}
           <Link to="/terms" className="text-primary hover:underline">
-            Términos de servicio
+            Terms of Service
           </Link>{' '}
-          y{' '}
+          and{' '}
           <Link to="/privacy" className="text-primary hover:underline">
-            Política de privacidad
+            Privacy Policy
           </Link>
         </p>
       </div>

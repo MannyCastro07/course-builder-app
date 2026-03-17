@@ -1,48 +1,32 @@
-import * as React from 'react';
-import { cn } from '@/utils';
+import * as React from "react"
+import { cn } from "@/utils"
 
 interface ProgressProps extends React.HTMLAttributes<HTMLDivElement> {
-  value: number;
-  max?: number;
-  size?: 'sm' | 'md' | 'lg';
-  variant?: 'default' | 'success' | 'warning' | 'error';
+  value?: number
+  max?: number
 }
 
 const Progress = React.forwardRef<HTMLDivElement, ProgressProps>(
-  ({ className, value, max = 100, size = 'md', variant = 'default', ...props }, ref) => {
-    const percentage = Math.min(100, Math.max(0, (value / max) * 100));
-
-    const sizeClasses = {
-      sm: 'h-1',
-      md: 'h-2',
-      lg: 'h-3',
-    };
-
-    const variantClasses = {
-      default: 'bg-primary',
-      success: 'bg-green-500',
-      warning: 'bg-yellow-500',
-      error: 'bg-red-500',
-    };
-
+  ({ className, value = 0, max = 100, ...props }, ref) => {
+    const percentage = Math.min(Math.max((value / max) * 100, 0), 100)
+    
     return (
       <div
         ref={ref}
         className={cn(
-          'w-full rounded-full bg-muted overflow-hidden',
-          sizeClasses[size],
+          "relative h-2 w-full overflow-hidden rounded-full bg-primary/20",
           className
         )}
         {...props}
       >
         <div
-          className={cn('h-full rounded-full transition-all duration-300', variantClasses[variant])}
-          style={{ width: `${percentage}%` }}
+          className="h-full w-full flex-1 bg-primary transition-all"
+          style={{ transform: `translateX(-${100 - percentage}%)` }}
         />
       </div>
-    );
+    )
   }
-);
-Progress.displayName = 'Progress';
+)
+Progress.displayName = "Progress"
 
-export { Progress };
+export { Progress }

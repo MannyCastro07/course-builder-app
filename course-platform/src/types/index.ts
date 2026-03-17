@@ -1,3 +1,5 @@
+import type { ReactNode } from 'react';
+
 // ============================================
 // USER TYPES AND AUTHENTICATION
 // ============================================
@@ -41,11 +43,19 @@ export interface CourseFilters {
   sortOrder?: 'asc' | 'desc';
 }
 
+export interface StudentFilters {
+  search?: string;
+  courseId?: string;
+  status?: string;
+  sortBy?: string;
+  sortOrder?: 'asc' | 'desc';
+}
+
 export interface CreateCourseData {
   title: string;
   description: string;
   category: string;
-  price: number;
+  price?: number;
   currency?: string;
   slug?: string;
   keywords?: string;
@@ -137,7 +147,7 @@ export interface Lesson {
   title: string;
   description?: string;
   content?: LessonContent;
-  type: 'video' | 'text' | 'quiz' | 'assignment' | 'download';
+  type: 'video' | 'text' | 'pdf' | 'image' | 'quiz' | 'assignment' | 'download';
   order: number;
   duration: number;
   isPreview: boolean;
@@ -148,7 +158,7 @@ export interface Lesson {
 }
 
 export interface LessonContent {
-  type: 'rich-text' | 'video' | 'embed' | 'quiz';
+  type: 'rich-text' | 'video' | 'embed' | 'quiz' | 'file' | 'gallery';
   data: string | QuizData;
 }
 
@@ -338,7 +348,7 @@ export interface TableColumn<T> {
   width?: string | number;
   sortable?: boolean;
   filterable?: boolean;
-  render?: (row: T) => React.ReactNode;
+  render?: (row: T) => ReactNode;
 }
 
 export interface FilterOption {
@@ -358,7 +368,7 @@ export interface Toast {
 export interface ModalState {
   isOpen: boolean;
   title?: string;
-  content?: React.ReactNode;
+  content?: ReactNode;
   onClose?: () => void;
   onConfirm?: () => void;
 }

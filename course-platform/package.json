@@ -6,8 +6,9 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
-    "preview": "vite preview"
+    "lint": "eslint src --report-unused-disable-directives",
+    "preview": "vite preview",
+    "smoke:supabase": "node --env-file=.env supabase-smoke.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.1.0",

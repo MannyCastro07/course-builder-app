@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   Button, 
@@ -8,6 +8,10 @@ import {
   Textarea,
   RadioGroup,
   RadioGroupItem,
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
 } from '@/components/ui';
 import { 
   ChevronRight, 
@@ -17,19 +21,25 @@ import {
   Lock, 
   Clock, 
   Layout, 
-  CreditCard,
+  Users,
   Link as LinkIcon,
-  BookOpen
+  BookOpen,
+  Loader2,
+  Upload
 } from 'lucide-react';
 import { cn, slugify } from '@/utils';
 import { useCourses } from '@/hooks';
 import { showErrorToast } from '@/stores';
+import { supabase } from '@/lib/supabase';
+import { FileUpload } from '@/components/common/FileUpload';
+import { courseService } from '@/services/courseService';
 
 const steps = [
   { id: 1, title: 'Basic Info', icon: BookOpen },
   { id: 2, title: 'URL & SEO', icon: LinkIcon },
   { id: 3, title: 'Access', icon: Lock },
   { id: 4, title: 'Template', icon: Layout },
+  { id: 5, title: 'Add Content', icon: Upload },
 ];
 
 export function CreateCourseWizard() {
@@ -44,12 +54,24 @@ export function CreateCourseWizard() {
     access: 'draft',
     coursePageTemplate: 'default',
     category: 'General',
-    price: 0,
   });
 
   const [slugModified, setSlugModified] = useState(false);
-  const [isSlugValidating, setIsSlugValidating] = useState(false);
+  const [isCheckingSlug, setIsCheckingSlug] = useState(false);
   const [slugError, setSlugError] = useState<string | null>(null);
+  const [slugValid, setSlugValid] = useState(false);
+  
+  // File upload state
+  const [uploadedFiles, setUploadedFiles] = useState<{
+    pdfs: { url: string; name: string; type: string }[];
+    images: { url: string; name: string; type: string }[];
+    video: { url: string; name: string; type: string } | null;
+  }>({
+    pdfs: [],
+    images: [],
+    video: null,
+  });
+  const [externalVideoUrl, setExternalVideoUrl] = useState('');
 
   // Auto-generate slug from title
   useEffect(() => {
@@ -58,15 +80,70 @@ export function CreateCourseWizard() {
     }
   }, [formData.title, slugModified]);
 
-  const handleNext = () => {
-    if (currentStep < 4) {
+  // Check slug uniqueness
+  const checkSlugUniqueness = useCallback(async (slug: string) => {
+    if (!slug || slug.length < 2) {
+      setSlugError('Slug must be at least 2 characters');
+      setSlugValid(false);
+      return;
+    }
+    
+    setIsCheckingSlug(true);
+    setSlugError(null);
+    
+    try {
+      const { data, error } = await supabase
+        .from('courses')
+        .select('id')
+        .eq('slug', slug)
+        .maybeSingle();
+      
+      if (error) throw error;
+      
+      if (data) {
+        setSlugError('This URL is already taken. Please choose another.');
+        setSlugValid(false);
+      } else {
+        setSlugError(null);
+        setSlugValid(true);
+      }
+    } catch (err) {
+      setSlugError('Error checking URL availability');
+      setSlugValid(false);
+    } finally {
+      setIsCheckingSlug(false);
+    }
+  }, []);
+
+  // Debounced slug check
+  useEffect(() => {
+    if (formData.slug && slugModified) {
+      const timer = setTimeout(() => {
+        checkSlugUniqueness(formData.slug);
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [formData.slug, slugModified, checkSlugUniqueness]);
+
+  const handleNext = async () => {
+    if (currentStep < steps.length) {
       if (currentStep === 1 && !formData.title) {
         showErrorToast('Validation Error', 'Course title is required');
         return;
       }
+      if (currentStep === 2) {
+        if (!formData.slug) {
+          showErrorToast('Validation Error', 'Course URL is required');
+          return;
+        }
+        if (slugError || !slugValid) {
+          showErrorToast('Validation Error', 'Please fix the URL before continuing');
+          return;
+        }
+      }
       setCurrentStep(prev => prev + 1);
     } else {
-      handleFinish();
+      await handleFinish();
     }
   };
 
@@ -82,7 +159,8 @@ export function CreateCourseWizard() {
       if (!formData.title) throw new Error('Title is required');
       if (!formData.slug) throw new Error('Slug is required');
 
-      const result: any = await createCourse({
+      // 1. Create course
+      const course = await createCourse({
         title: formData.title,
         description: formData.description,
         keywords: formData.keywords,
@@ -90,7 +168,6 @@ export function CreateCourseWizard() {
         access: formData.access,
         coursePageTemplate: formData.coursePageTemplate,
         category: formData.category,
-        price: formData.price,
         afterPurchase: {
           type: 'afterlogin',
           navigationType: 'global',
@@ -98,14 +175,53 @@ export function CreateCourseWizard() {
         }
       });
 
-      // Redirection logic (useCourses hook handles success toast)
-      // Note: We need the ID from the result
-      if (result?.id) {
-        navigate(`/courses/${result.id}/edit`);
-      } else {
-        // Fallback to list if ID missing for some reason
-        navigate('/courses');
+      if (!course?.id) {
+        throw new Error('Failed to create course');
       }
+
+      // 2. Create section "Module 1"
+      const section = await courseService.createSection(course.id, {
+        title: 'Module 1',
+        order: 1
+      });
+
+      // 3. Create lessons from uploaded files
+      const lessons = [];
+
+      // PDF lessons
+      for (const pdf of uploadedFiles.pdfs || []) {
+        lessons.push(await courseService.createLesson(course.id, section.id, {
+          title: pdf.name,
+          type: 'download',
+          content: { type: 'rich-text', data: `Download: ${pdf.url}` },
+          order: lessons.length + 1
+        }));
+      }
+
+      // Image lessons
+      for (const img of uploadedFiles.images || []) {
+        lessons.push(await courseService.createLesson(course.id, section.id, {
+          title: img.name,
+          type: 'download',
+          content: { type: 'rich-text', data: `Image: ${img.url}` },
+          order: lessons.length + 1
+        }));
+      }
+
+      // Video lesson
+      const video = uploadedFiles.video;
+      if (video || externalVideoUrl) {
+        lessons.push(await courseService.createLesson(course.id, section.id, {
+          title: 'Introduction Video',
+          type: 'video',
+          videoUrl: video?.url || externalVideoUrl,
+          content: { type: 'video', data: 'Video lesson' },
+          order: lessons.length + 1
+        }));
+      }
+
+      // 4. Redirect to course editor
+      navigate(`/courses/${course.id}/edit`);
     } catch (error: any) {
       showErrorToast('Creation failed', error.message || 'Could not create course');
     }
@@ -117,35 +233,26 @@ export function CreateCourseWizard() {
         return (
           <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
             <div className="space-y-2">
-              <Label htmlFor="title" className="text-lg font-semibold">What is the title of your course?</Label>
+              <Label htmlFor="title" className="text-lg font-semibold">Course Title *</Label>
               <Input 
                 id="title"
-                placeholder="e.g. Master React in 30 Days"
+                placeholder="e.g., Advanced React Patterns"
                 className="text-lg h-12"
                 value={formData.title}
                 onChange={(e) => setFormData({ ...formData, title: e.target.value })}
               />
-              <p className="text-sm text-muted-foreground">This can be changed later.</p>
+              <p className="text-sm text-muted-foreground">Choose a clear, descriptive title for your course.</p>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="description" className="text-lg font-semibold">Course Description</Label>
+              <Label htmlFor="description" className="text-lg font-semibold">Description</Label>
               <Textarea 
                 id="description"
-                placeholder="Describe what students will learn..."
+                placeholder="What will students learn in this course?"
                 className="min-h-[120px]"
                 value={formData.description}
                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
               />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="keywords" className="text-lg font-semibold">Keywords</Label>
-              <Input 
-                id="keywords"
-                placeholder="mastery, react, frontend, development"
-                value={formData.keywords}
-                onChange={(e) => setFormData({ ...formData, keywords: e.target.value })}
-              />
-              <p className="text-sm text-muted-foreground">Add relevant keywords for searchability.</p>
+              <p className="text-sm text-muted-foreground">Optional: Provide a brief overview of your course content.</p>
             </div>
           </div>
         );
@@ -153,54 +260,69 @@ export function CreateCourseWizard() {
         return (
           <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
             <div className="space-y-2">
-              <Label htmlFor="slug" className="text-lg font-semibold">Course URL</Label>
-              <div className="flex items-center gap-2 group">
-                <div className="h-12 px-4 flex items-center bg-muted border border-r-0 rounded-l-md text-muted-foreground">
+              <Label htmlFor="slug" className="text-lg font-semibold">Course URL *</Label>
+              <div className="flex items-center gap-2">
+                <div className="h-12 px-4 flex items-center bg-muted border border-r-0 rounded-l-md text-muted-foreground whitespace-nowrap">
                   /course/
                 </div>
                 <Input 
                   id="slug"
-                  className="text-lg h-12 rounded-l-none"
+                  className={cn(
+                    "text-lg h-12 rounded-l-none",
+                    slugValid && "border-green-500 focus-visible:ring-green-500",
+                    slugError && "border-red-500 focus-visible:ring-red-500"
+                  )}
                   value={formData.slug}
                   onChange={(e) => {
-                    setFormData({ ...formData, slug: e.target.value.toLowerCase().replace(/\s+/g, '-') });
+                    setFormData({ ...formData, slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '') });
                     setSlugModified(true);
+                    setSlugValid(false);
                   }}
                 />
+                {isCheckingSlug && (
+                  <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                )}
+                {!isCheckingSlug && slugValid && (
+                  <Check className="h-5 w-5 text-green-500" />
+                )}
               </div>
-              <p className="text-sm text-muted-foreground">This is the permanent URL for your course. Only lowercase, numbers and hyphens allowed.</p>
-              {slugError && <p className="text-sm text-destructive font-medium">{slugError}</p>}
+              {slugError ? (
+                <p className="text-sm text-red-500">{slugError}</p>
+              ) : (
+                <p className="text-sm text-muted-foreground">This will be the permanent URL for your course. Use only lowercase letters, numbers, and hyphens.</p>
+              )}
             </div>
-            <div className="p-4 bg-muted/50 rounded-lg border border-dashed text-center">
-              <p className="text-sm font-medium text-muted-foreground mb-1 uppercase tracking-wider">Preview</p>
-              <p className="text-primary font-bold">your-school-url.com/course/{formData.slug || '...'}</p>
+            <div className="p-4 bg-muted/50 rounded-lg border border-dashed">
+              <p className="text-sm font-medium text-muted-foreground mb-1">URL Preview</p>
+              <p className="text-primary font-medium">
+                {window.location.origin}/course/{formData.slug || 'your-course-slug'}
+              </p>
             </div>
           </div>
         );
       case 3:
         return (
           <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
-            <Label className="text-lg font-semibold">Who can access this course?</Label>
+            <Label className="text-lg font-semibold">Access Level</Label>
             <RadioGroup 
               value={formData.access} 
               onValueChange={(val: string) => setFormData({ ...formData, access: val })}
               className="grid grid-cols-1 md:grid-cols-2 gap-4"
             >
               {[
-                { id: 'draft', title: 'Draft', desc: 'Visible only to you and admins', icon: Lock },
-                { id: 'free', title: 'Free', desc: 'Anyone can enroll for free', icon: Globe },
-                { id: 'paid', title: 'Paid', desc: 'Students must pay to access', icon: CreditCard },
-                { id: 'private', title: 'Private', desc: 'Invite only enrollment', icon: Lock },
-                { id: 'coming_soon', title: 'Coming Soon', desc: 'Visible but not enrollable', icon: Clock },
+                { id: 'public', title: 'Public', desc: 'All employees can access', icon: Globe },
+                { id: 'department', title: 'Department', desc: 'Specific departments only', icon: Users },
+                { id: 'restricted', title: 'Restricted', desc: 'Selected groups only', icon: Lock },
+                { id: 'draft', title: 'Draft', desc: 'Visible only to you and admins', icon: Clock },
               ].map((opt) => (
                 <div key={opt.id} className="relative">
                   <RadioGroupItem value={opt.id} id={opt.id} className="peer sr-only" />
                   <Label
                     htmlFor={opt.id}
-                    className="flex flex-col items-start p-4 border-2 rounded-xl cursor-pointer hover:bg-muted/50 peer-data-[state=checked]:border-primary peer-data-[state=checked]:bg-primary/5 transition-all"
+                    className="flex flex-col p-4 border-2 rounded-xl cursor-pointer hover:bg-muted/50 peer-data-[state=checked]:border-primary peer-data-[state=checked]:bg-primary/5 transition-all h-full"
                   >
-                    <div className="flex items-center gap-2 mb-1">
-                      <opt.icon className="h-4 w-4 text-primary" />
+                    <div className="flex items-center gap-2 mb-2">
+                      <opt.icon className="h-5 w-5 text-primary" />
                       <span className="font-bold">{opt.title}</span>
                     </div>
                     <span className="text-sm text-muted-foreground">{opt.desc}</span>
@@ -218,35 +340,83 @@ export function CreateCourseWizard() {
       case 4:
         return (
           <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
-            <Label className="text-lg font-semibold">Select a Page Template</Label>
+            <Label className="text-lg font-semibold">Choose a Template</Label>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               {[
-                { id: 'default', title: 'Default', desc: 'Standard course landing page', img: 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=400&q=80' },
-                { id: 'sales', title: 'Sales Funnel', desc: 'Optimized for conversions', img: 'https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=400&q=80' },
-                { id: 'minimal', title: 'Minimal', desc: 'Just the essentials', img: 'https://images.unsplash.com/photo-1499750310107-5fef28a66643?w=400&q=80' },
+                { id: 'default', title: 'Default', desc: 'Standard course page layout' },
+                { id: 'minimal', title: 'Minimal', desc: 'Clean and simple design' },
+                { id: 'sales', title: 'Sales', desc: 'Optimized for conversions' },
               ].map((tpl) => (
-                <div key={tpl.id} className="group relative">
+                <div key={tpl.id} className="relative">
                   <div 
                     onClick={() => setFormData({ ...formData, coursePageTemplate: tpl.id })}
                     className={cn(
-                      "cursor-pointer border-2 rounded-xl overflow-hidden transition-all",
-                      formData.coursePageTemplate === tpl.id ? "border-primary scale-105 shadow-lg" : "border-border hover:border-muted-foreground/50"
+                      "cursor-pointer border-2 rounded-xl p-6 transition-all h-full",
+                      formData.coursePageTemplate === tpl.id 
+                        ? "border-primary bg-primary/5" 
+                        : "border-border hover:border-muted-foreground/50"
                     )}
                   >
-                    <img src={tpl.img} alt={tpl.title} className="w-full h-32 object-cover" />
-                    <div className="p-3">
-                      <p className="font-bold">{tpl.title}</p>
-                      <p className="text-xs text-muted-foreground">{tpl.desc}</p>
-                    </div>
+                    <Layout className="h-8 w-8 text-primary mb-4" />
+                    <p className="font-bold mb-1">{tpl.title}</p>
+                    <p className="text-sm text-muted-foreground">{tpl.desc}</p>
                   </div>
                   {formData.coursePageTemplate === tpl.id && (
-                    <div className="absolute -top-2 -right-2 bg-primary text-white rounded-full p-1 shadow-md">
-                      <Check className="h-4 w-4" />
+                    <div className="absolute top-2 right-2">
+                      <Check className="h-5 w-5 text-primary" />
                     </div>
                   )}
                 </div>
               ))}
             </div>
+          </div>
+        );
+      case 5:
+        return (
+          <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
+            <div className="space-y-4">
+              <h3 className="text-lg font-semibold">Add Course Content</h3>
+              <p className="text-muted-foreground">Upload materials for your first module.</p>
+            </div>
+            
+            <Tabs defaultValue="pdf">
+              <TabsList className="grid w-full grid-cols-3">
+                <TabsTrigger value="pdf">PDFs</TabsTrigger>
+                <TabsTrigger value="images">Images</TabsTrigger>
+                <TabsTrigger value="video">Video</TabsTrigger>
+              </TabsList>
+              
+              <TabsContent value="pdf">
+                <FileUpload
+                  accept="pdf"
+                  multiple
+                  onUploadComplete={(files) => setUploadedFiles(prev => ({...prev, pdfs: files}))}
+                />
+              </TabsContent>
+              
+              <TabsContent value="images">
+                <FileUpload
+                  accept="image"
+                  multiple
+                  onUploadComplete={(files) => setUploadedFiles(prev => ({...prev, images: files}))}
+                />
+              </TabsContent>
+              
+              <TabsContent value="video">
+                <FileUpload
+                  accept="video"
+                  onUploadComplete={(files) => setUploadedFiles(prev => ({...prev, video: files[0]}))}
+                />
+                <div className="mt-4">
+                  <Label>Or enter external video URL</Label>
+                  <Input 
+                    placeholder="https://youtube.com/..."
+                    value={externalVideoUrl}
+                    onChange={(e) => setExternalVideoUrl(e.target.value)}
+                  />
+                </div>
+              </TabsContent>
+            </Tabs>
           </div>
         );
       default:
@@ -256,7 +426,7 @@ export function CreateCourseWizard() {
 
   return (
     <div className="max-w-4xl mx-auto py-12 px-4 min-h-[80vh] flex flex-col">
-      {/* Step Indicator */}
+      {/* Progress Steps */}
       <div className="mb-12">
         <div className="flex items-center justify-between relative">
           <div className="absolute top-1/2 left-0 w-full h-1 bg-muted -translate-y-1/2 -z-10" />
@@ -269,13 +439,17 @@ export function CreateCourseWizard() {
               <div 
                 className={cn(
                   "h-10 w-10 rounded-full flex items-center justify-center border-2 transition-all duration-300",
-                  currentStep >= step.id ? "bg-primary border-primary text-white shadow-md shadow-primary/20" : "bg-background border-muted text-muted-foreground"
+                  currentStep > step.id 
+                    ? "bg-green-500 border-green-500 text-white" 
+                    : currentStep === step.id 
+                      ? "bg-primary border-primary text-white shadow-md shadow-primary/20"
+                      : "bg-background border-muted text-muted-foreground"
                 )}
               >
                 {currentStep > step.id ? <Check className="h-5 w-5" /> : <step.icon className="h-5 w-5" />}
               </div>
               <span className={cn(
-                "text-xs font-bold uppercase tracking-widest",
+                "text-xs font-medium",
                 currentStep >= step.id ? "text-primary" : "text-muted-foreground"
               )}>
                 {step.title}
@@ -285,58 +459,55 @@ export function CreateCourseWizard() {
         </div>
       </div>
 
-      {/* Wizard Header */}
-      <div className="mb-10 text-center space-y-2">
-        <h1 className="text-4xl font-extrabold tracking-tight">Create your course</h1>
-        <p className="text-muted-foreground text-lg">Step {currentStep} of {steps.length}: {steps[currentStep-1].title}</p>
+      {/* Header */}
+      <div className="mb-8 text-center">
+        <h1 className="text-3xl font-bold">Create New Course</h1>
+        <p className="text-muted-foreground mt-2">Step {currentStep} of {steps.length}: {steps[currentStep-1].title}</p>
       </div>
 
-      {/* Main Form Area */}
-      <Card className="flex-1 p-8 md:p-12 shadow-xl border-none bg-background/50 backdrop-blur-sm relative overflow-hidden">
-        <div className="absolute top-0 left-0 w-1 h-full bg-primary" />
+      {/* Form Card */}
+      <Card className="flex-1 p-8 shadow-sm">
         {renderStep()}
       </Card>
 
-      {/* Navigation Buttons */}
+      {/* Navigation */}
       <div className="mt-8 flex items-center justify-between">
         <Button 
           variant="outline" 
           onClick={handleBack} 
           disabled={currentStep === 1 || isCreating}
-          className="h-12 px-8 font-bold border-2"
         >
-          <ChevronLeft className="mr-2 h-5 w-5" />
+          <ChevronLeft className="mr-2 h-4 w-4" />
           Back
         </Button>
 
-        <div className="flex gap-4">
+        <div className="flex gap-3">
           <Button 
             variant="ghost" 
             onClick={() => navigate('/courses')}
-            className="h-12 font-medium"
+            disabled={isCreating}
           >
             Cancel
           </Button>
           <Button 
             onClick={handleNext} 
-            disabled={isCreating}
-            className="h-12 px-10 font-bold shadow-lg shadow-primary/20"
+            disabled={isCreating || (currentStep === 2 && !slugValid)}
           >
             {isCreating ? (
-              <span className="flex items-center gap-2">
-                <Clock className="h-5 w-5 animate-spin" />
-                Processing...
-              </span>
-            ) : currentStep === 4 ? (
-              <span className="flex items-center gap-2">
-                Finish & Create
-                <Check className="ml-2 h-5 w-5" />
-              </span>
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Creating...
+              </>
+            ) : currentStep === steps.length ? (
+              <>
+                Create Course
+                <Check className="ml-2 h-4 w-4" />
+              </>
             ) : (
-              <span className="flex items-center gap-2">
+              <>
                 Continue
-                <ChevronRight className="ml-2 h-5 w-5" />
-              </span>
+                <ChevronRight className="ml-2 h-4 w-4" />
+              </>
             )}
           </Button>
         </div>

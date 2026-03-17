@@ -8,10 +8,8 @@ import {
   Download,
   Users,
   BookOpen,
-  TrendingUp,
   DollarSign,
   Target,
-  Clock,
 } from 'lucide-react';
 import { formatCurrency, formatNumber } from '@/utils';
 

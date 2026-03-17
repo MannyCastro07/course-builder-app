@@ -6,6 +6,7 @@ import { CSS } from '@dnd-kit/utilities';
 import { useUIStore, useCourseStore } from '@/stores';
 import { useCourse } from '@/hooks';
 import { Button, Input, Textarea, Badge, Card } from '@/components/ui';
+import { FileUpload } from '@/components/common/FileUpload';
 import {
   Sheet,
   SheetContent,
@@ -32,6 +33,7 @@ import {
   Smartphone,
   BookOpen,
   Link as LinkIcon,
+  X,
 } from 'lucide-react';
 import { cn } from '@/utils';
 import type { Section, Lesson } from '@/types';
@@ -130,7 +132,9 @@ function ActivityModal({
       title: 'Multimedia',
       activities: [
         { type: 'video', label: 'Video', icon: PlayCircle, description: 'Upload or embed a video file' },
-        { type: 'text', label: 'PDF / Text', icon: FileText, description: 'Text content or PDF reading' },
+        { type: 'text', label: 'Text', icon: FileText, description: 'Text content or rich text' },
+        { type: 'pdf', label: 'PDF Document', icon: FileText, description: 'Upload a PDF document' },
+        { type: 'image', label: 'Image Gallery', icon: FileText, description: 'Upload images' },
       ],
     },
     {
@@ -303,7 +307,151 @@ function SortableLesson({ lesson, isSelected, onClick }: { lesson: Lesson; isSel
 
 // Lesson Editor
 function LessonEditor() {
-  const { selectedLesson, updateLesson } = useCourseStore();
+  const { selectedLesson, updateLesson, currentCourse, saveCourse } = useCourseStore();
+  const [lessonType, setLessonType] = React.useState<Lesson['type']>('text');
+  const [textContent, setTextContent] = React.useState('');
+  const [externalVideoUrl, setExternalVideoUrl] = React.useState('');
+  const [uploadedFile, setUploadedFile] = React.useState<{ url: string; name: string; type: string } | null>(null);
+  const [uploadedImages, setUploadedImages] = React.useState<{ url: string; name: string; type: string }[]>([]);
+  const [uploadedVideo, setUploadedVideo] = React.useState<{ url: string; name: string; type: string } | null>(null);
+
+  // Debounced save to backend
+  const debouncedSaveCourse = React.useCallback(
+    () => {
+      const timeoutId = setTimeout(() => {
+        saveCourse();
+      }, 500);
+      return () => clearTimeout(timeoutId);
+    },
+    [saveCourse]
+  );
+
+  // Sync with selected lesson
+  React.useEffect(() => {
+    if (selectedLesson) {
+      setLessonType(selectedLesson.type);
+      setExternalVideoUrl(selectedLesson.videoUrl || '');
+      
+      // Parse content for file data
+      if (selectedLesson.content?.data) {
+        if (selectedLesson.type === 'text') {
+          setTextContent(selectedLesson.content.data as string);
+        } else if (selectedLesson.type === 'pdf') {
+          try {
+            const parsed = JSON.parse(selectedLesson.content.data as string);
+            if (parsed.fileUrl) {
+              setUploadedFile({ url: parsed.fileUrl, name: parsed.fileName || 'PDF Document', type: 'application/pdf' });
+            }
+          } catch (e) {
+            // Not JSON, ignore
+          }
+        } else if (selectedLesson.type === 'image') {
+          try {
+            const parsed = JSON.parse(selectedLesson.content.data as string);
+            if (parsed.files) {
+              setUploadedImages(parsed.files);
+            }
+          } catch (e) {
+            // Not JSON, ignore
+          }
+        }
+      }
+      
+      // Parse video URL for uploaded video
+      if (selectedLesson.videoUrl && !selectedLesson.videoUrl.match(/youtube|vimeo/i)) {
+        setUploadedVideo({ url: selectedLesson.videoUrl, name: 'Video', type: 'video/mp4' });
+      }
+    }
+  }, [selectedLesson]);
+
+  // Handle type change - clears incompatible data and persists to backend
+  const handleTypeChange = (newType: Lesson['type']) => {
+    if (!selectedLesson) return;
+
+    setLessonType(newType);
+
+    // Clear incompatible data
+    const updates: any = { type: newType };
+
+    if (newType !== 'pdf') {
+      setUploadedFile(null);
+      updates.content = undefined;
+    }
+    if (newType !== 'image') {
+      setUploadedImages([]);
+      if (newType !== 'pdf') {
+        updates.content = undefined;
+      }
+    }
+    if (newType !== 'video') {
+      setUploadedVideo(null);
+      setExternalVideoUrl('');
+      updates.videoUrl = undefined;
+    }
+    if (newType !== 'text') {
+      setTextContent('');
+      if (newType !== 'pdf' && newType !== 'image') {
+        updates.content = undefined;
+      }
+    }
+
+    // Persist to local state
+    updateLesson(selectedLesson.id, updates);
+
+    // Trigger backend save
+    debouncedSaveCourse();
+  };
+
+  // Save lesson with file data and persist to backend
+  const handleSaveLesson = () => {
+    if (!selectedLesson) return;
+
+    let contentData: any;
+    let videoUrl = externalVideoUrl;
+
+    switch (lessonType) {
+      case 'text':
+        contentData = { type: 'rich-text', data: textContent };
+        break;
+      case 'pdf':
+        contentData = { 
+          type: 'file', 
+          data: JSON.stringify({ 
+            fileUrl: uploadedFile?.url, 
+            fileName: uploadedFile?.name 
+          }) 
+        };
+        break;
+      case 'image':
+        contentData = { 
+          type: 'gallery', 
+          data: JSON.stringify({ files: uploadedImages }) 
+        };
+        break;
+      case 'video':
+        contentData = { type: 'video', data: '' };
+        videoUrl = uploadedVideo?.url || externalVideoUrl;
+        break;
+      default:
+        contentData = selectedLesson.content;
+    }
+
+    updateLesson(selectedLesson.id, {
+      type: lessonType,
+      content: contentData,
+      videoUrl: lessonType === 'video' ? videoUrl : undefined,
+    });
+
+    // Trigger backend save
+    debouncedSaveCourse();
+  };
+
+  // Auto-save when file uploads complete or are removed
+  React.useEffect(() => {
+    if (selectedLesson) {
+      handleSaveLesson();
+    }
+  }, [uploadedFile, uploadedImages, uploadedVideo]);
 
   if (!selectedLesson) {
     return (
@@ -340,14 +488,19 @@ function LessonEditor() {
           <label className="text-sm font-medium mb-2 block">Type</label>
           <select
             className="w-full h-9 rounded-md border border-input bg-transparent px-3"
-            value={selectedLesson.type}
-            onChange={(e) => updateLesson(selectedLesson.id, { type: e.target.value as any })}
+            value={lessonType}
+            onChange={(e) => {
+              const newType = e.target.value as Lesson['type'];
+              handleTypeChange(newType);
+            }}
           >
-            <option value="video">Video</option>
             <option value="text">Text</option>
+            <option value="pdf">PDF</option>
+            <option value="image">Image</option>
+            <option value="video">Video</option>
             <option value="quiz">Quiz</option>
             <option value="assignment">Assignment</option>
-            <option value="download">Downloadable</option>
+            <option value="download">Download</option>
           </select>
         </div>
         <div>
@@ -370,29 +523,219 @@ function LessonEditor() {
         <label htmlFor="isPreview" className="text-sm">Allow Preview</label>
       </div>
 
-      {selectedLesson.type === 'video' && (
-        <div className="space-y-4">
-          <div>
-            <label className="text-sm font-medium mb-2 block">Video URL (YouTube, Vimeo, MP4)</label>
-            <div className="relative">
-              <LinkIcon className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input
-                className="pl-9"
-                placeholder="https://www.youtube.com/watch?v=..."
-                value={selectedLesson.videoUrl || ''}
-                onChange={(e) => updateLesson(selectedLesson.id, { videoUrl: e.target.value })}
-              />
+      {/* TEXT CONTENT */}
+      {lessonType === 'text' && (
+        <Card className="p-4">
+          <label className="text-sm font-medium mb-2 block">Content</label>
+          <Textarea
+            placeholder="Write lesson content here..."
+            rows={10}
+            value={textContent}
+            onChange={(e) => {
+              setTextContent(e.target.value);
+              updateLesson(selectedLesson.id, { 
+                content: { type: 'rich-text', data: e.target.value } 
+              });
+            }}
+          />
+        </Card>
+      )}
+
+      {/* PDF UPLOAD */}
+      {lessonType === 'pdf' && (
+        <Card className="p-4 space-y-4">
+          <label className="text-sm font-medium block">PDF Document</label>
+          {uploadedFile ? (
+            <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
+              <div className="flex items-center gap-3">
+                <FileText className="h-8 w-8 text-red-500" />
+                <div className="flex-1">
+                  <p className="font-medium">{uploadedFile.name}</p>
+                  <a 
+                    href={uploadedFile.url} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="text-sm text-primary hover:underline"
+                  >
+                    View PDF
+                  </a>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setUploadedFile(null);
+                    updateLesson(selectedLesson.id, { content: undefined });
+                    debouncedSaveCourse();
+                  }}
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
-            <p className="text-xs text-muted-foreground mt-1">Enter a valid video URL for this lesson.</p>
-          </div>
-          {selectedLesson.videoUrl && (
+          ) : (
+            <FileUpload
+              accept="pdf"
+              courseId={currentCourse?.id}
+              lessonId={selectedLesson.id}
+              onUploadComplete={(files) => {
+                if (files.length > 0) {
+                  setUploadedFile(files[0]);
+                  updateLesson(selectedLesson.id, { 
+                    content: { 
+                      type: 'file' as any, 
+                      data: JSON.stringify({ 
+                        fileUrl: files[0].url, 
+                        fileName: files[0].name 
+                      }) 
+                    } 
+                  });
+                  debouncedSaveCourse();
+                }
+              }}
+              onUploadError={(error) => console.error('Upload error:', error)}
+            />
+          )}
+        </Card>
+      )}
+
+      {/* IMAGE UPLOAD */}
+      {lessonType === 'image' && (
+        <Card className="p-4 space-y-4">
+          <label className="text-sm font-medium block">Image Gallery</label>
+          {uploadedImages.length > 0 && (
+            <div className="grid grid-cols-3 gap-2">
+              {uploadedImages.map((img, index) => (
+                <div key={index} className="relative group">
+                  <img 
+                    src={img.url} 
+                    alt={img.name}
+                    className="w-full h-24 object-cover rounded-lg"
+                  />
+                  <button
+                    onClick={() => {
+                      const newImages = uploadedImages.filter((_, i) => i !== index);
+                      setUploadedImages(newImages);
+                      // Persist immediately if no images left or after removing
+                      updateLesson(selectedLesson.id, { 
+                        content: newImages.length > 0 
+                          ? { type: 'gallery' as any, data: JSON.stringify({ files: newImages }) }
+                          : undefined 
+                      });
+                      debouncedSaveCourse();
+                    }}
+                    className="absolute top-1 right-1 p-1 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+          <FileUpload
+            accept="image"
+            multiple
+            courseId={currentCourse?.id}
+            lessonId={selectedLesson.id}
+            onUploadComplete={(files) => {
+              const newImages = [...uploadedImages, ...files];
+              setUploadedImages(newImages);
+              updateLesson(selectedLesson.id, { 
+                content: { type: 'gallery' as any, data: JSON.stringify({ files: newImages }) }
+              });
+              debouncedSaveCourse();
+            }}
+            onUploadError={(error) => console.error('Upload error:', error)}
+          />
+        </Card>
+      )}
+
+      {/* VIDEO UPLOAD / URL */}
+      {lessonType === 'video' && (
+        <div className="space-y-4">
+          <Card className="p-4 space-y-4">
+            <label className="text-sm font-medium block">Video Source</label>
+            
+            {/* External Video URL */}
+            <div>
+              <label className="text-xs text-muted-foreground mb-1 block">External URL (YouTube, Vimeo, etc.)</label>
+              <div className="relative">
+                <LinkIcon className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input
+                  className="pl-9"
+                  placeholder="https://www.youtube.com/watch?v=..."
+                  value={externalVideoUrl}
+                  onChange={(e) => {
+                    setExternalVideoUrl(e.target.value);
+                    updateLesson(selectedLesson.id, { videoUrl: e.target.value });
+                  }}
+                />
+              </div>
+            </div>
+
+            <div className="relative">
+              <div className="absolute inset-0 flex items-center">
+                <span className="w-full border-t" />
+              </div>
+              <div className="relative flex justify-center text-xs uppercase">
+                <span className="bg-card px-2 text-muted-foreground">Or upload</span>
+              </div>
+            </div>
+
+            {/* Video Upload */}
+            {uploadedVideo ? (
+              <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
+                <div className="flex items-center gap-3">
+                  <PlayCircle className="h-8 w-8 text-purple-500" />
+                  <div className="flex-1">
+                    <p className="font-medium">{uploadedVideo.name}</p>
+                    <a 
+                      href={uploadedVideo.url} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="text-sm text-primary hover:underline"
+                    >
+                      View Video
+                    </a>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setUploadedVideo(null);
+                      updateLesson(selectedLesson.id, { videoUrl: undefined });
+                      debouncedSaveCourse();
+                    }}
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <FileUpload
+                accept="video"
+                courseId={currentCourse?.id}
+                lessonId={selectedLesson.id}
+                onUploadComplete={(files) => {
+                  if (files.length > 0) {
+                    setUploadedVideo(files[0]);
+                    updateLesson(selectedLesson.id, { videoUrl: files[0].url });
+                    debouncedSaveCourse();
+                  }
+                }}
+                onUploadError={(error) => console.error('Upload error:', error)}
+              />
+            )}
+          </Card>
+
+          {/* Video Preview */}
+          {(uploadedVideo?.url || externalVideoUrl) && (
             <div className="aspect-video rounded-lg overflow-hidden bg-black border">
-              {/* Robust YouTube/Vimeo embed detection */}
-              {selectedLesson.videoUrl.includes('youtube.com') || selectedLesson.videoUrl.includes('youtu.be') ? (
+              {externalVideoUrl && (externalVideoUrl.includes('youtube.com') || externalVideoUrl.includes('youtu.be')) ? (
                 <iframe
                   className="w-full h-full"
                   src={(() => {
-                    const url = selectedLesson.videoUrl;
+                    const url = externalVideoUrl;
                     if (url.includes('watch?v=')) return url.replace('watch?v=', 'embed/');
                     if (url.includes('youtu.be/')) return url.replace('youtu.be/', 'youtube.com/embed/');
                     return url;
@@ -401,31 +744,24 @@ function LessonEditor() {
                   frameBorder="0"
                   allowFullScreen
                 />
-              ) : selectedLesson.videoUrl.includes('vimeo.com') ? (
+              ) : externalVideoUrl && externalVideoUrl.includes('vimeo.com') ? (
                 <iframe
                   className="w-full h-full"
-                  src={selectedLesson.videoUrl.replace('vimeo.com/', 'player.vimeo.com/video/')}
+                  src={externalVideoUrl.replace('vimeo.com/', 'player.vimeo.com/video/')}
                   title="Lesson Preview"
                   frameBorder="0"
                   allowFullScreen
                 />
               ) : (
-                <video className="w-full h-full" controls src={selectedLesson.videoUrl} />
+                <video 
+                  className="w-full h-full" 
+                  controls 
+                  src={uploadedVideo?.url || externalVideoUrl} 
+                />
               )}
             </div>
           )}
         </div>
-      )}
-
-      {selectedLesson.type === 'text' && (
-        <Card className="p-4">
-          <Textarea
-            placeholder="Write lesson content here..."
-            rows={10}
-            value={selectedLesson.content?.data as string || ''}
-            onChange={(e) => updateLesson(selectedLesson.id, { content: { type: 'rich-text', data: e.target.value } })}
-          />
-        </Card>
       )}
     </div>
   );

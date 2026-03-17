@@ -3,19 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import { authService } from '@/services';
 import { useAuthStore, showSuccessToast, showErrorToast } from '@/stores';
 
-interface LoginCredentials {
-  email: string;
-  password: string;
-  rememberMe?: boolean;
-}
-
-interface RegisterData {
-  email: string;
-  password: string;
-  firstName: string;
-  lastName: string;
-}
-
 export function useAuth() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -70,7 +57,7 @@ export function useAuth() {
       showSuccessToast('Sesión cerrada', 'Has cerrado sesión exitosamente');
       navigate('/login');
     },
-    onError: (error: any) => {
+    onError: () => {
       // Even if the API call fails, logout locally
       storeLogout();
       queryClient.clear();

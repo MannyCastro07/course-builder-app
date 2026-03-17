@@ -1,7 +1,7 @@
 import React, { useCallback } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { cn, formatFileSize } from '@/utils';
-import { Button, Progress } from '@/components/ui';
+import { Button } from '@/components/ui';
 import { Upload, X, File, Image, Video, Music, FileText } from 'lucide-react';
 
 interface FileUploaderProps {
@@ -10,7 +10,6 @@ interface FileUploaderProps {
   maxFiles?: number;
   multiple?: boolean;
   onUpload: (files: File[]) => void;
-  onProgress?: (file: string, progress: number) => void;
   uploading?: boolean;
   progress?: number;
   value?: File[];
@@ -42,7 +41,6 @@ export function FileUploader({
   maxFiles = 1,
   multiple = false,
   onUpload,
-  onProgress,
   uploading = false,
   progress = 0,
   value = [],

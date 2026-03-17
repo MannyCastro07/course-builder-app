@@ -127,12 +127,12 @@ export function useCourses(options: UseCoursesOptions = {}) {
     error: coursesQuery.error,
 
     // Mutations
-    createCourse: createMutation.mutate,
-    updateCourse: updateMutation.mutate,
-    deleteCourse: deleteMutation.mutate,
-    duplicateCourse: duplicateMutation.mutate,
-    publishCourse: publishMutation.mutate,
-    unpublishCourse: unpublishMutation.mutate,
+    createCourse: createMutation.mutateAsync,
+    updateCourse: updateMutation.mutateAsync,
+    deleteCourse: deleteMutation.mutateAsync,
+    duplicateCourse: duplicateMutation.mutateAsync,
+    publishCourse: publishMutation.mutateAsync,
+    unpublishCourse: unpublishMutation.mutateAsync,
 
     // Loading states
     isCreating: createMutation.isPending,

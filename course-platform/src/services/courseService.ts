@@ -45,20 +45,57 @@ const mapSectionFromSupabase = (data: any): Section => ({
   lessons: data.lessons ? data.lessons.map(mapLessonFromSupabase) : [],
 });
 
-const mapLessonFromSupabase = (data: any): Lesson => ({
-  id: data.id,
-  sectionId: data.section_id,
-  title: data.title,
-  content: { type: 'rich-text', data: data.content || '' },
-  type: data.type as any,
-  order: data.order,
-  duration: data.duration,
-  isPreview: data.is_free,
-  videoUrl: data.video_url,
-  attachments: [],
-  createdAt: new Date(data.created_at),
-  updatedAt: new Date(data.created_at),
-} as Lesson);
+const mapLessonFromSupabase = (data: any): Lesson => {
+  // Parse content to extract file metadata for attachments
+  const attachments: any[] = [];
+  let contentData = data.content || '';
+  let contentType: 'rich-text' | 'video' | 'embed' | 'quiz' | 'file' | 'gallery' = 'rich-text';
+
+  // Try to parse content as JSON for file-based lessons
+  if (contentData && (data.type === 'pdf' || data.type === 'image')) {
+    try {
+      const parsed = JSON.parse(contentData);
+      if (data.type === 'pdf' && parsed.fileUrl) {
+        contentType = 'file';
+        attachments.push({
+          id: `pdf-${data.id}`,
+          name: parsed.fileName || 'PDF Document',
+          url: parsed.fileUrl,
+          size: 0,
+          type: 'application/pdf',
+        });
+      } else if (data.type === 'image' && parsed.files) {
+        contentType = 'gallery';
+        parsed.files.forEach((file: any, index: number) => {
+          attachments.push({
+            id: `img-${data.id}-${index}`,
+            name: file.name || `Image ${index + 1}`,
+            url: file.url,
+            size: 0,
+            type: file.type || 'image/jpeg',
+          });
+        });
+      }
+    } catch (e) {
+      // Content is not JSON, treat as plain text
+    }
+  }
+
+  return {
+    id: data.id,
+    sectionId: data.section_id,
+    title: data.title,
+    content: { type: contentType, data: contentData },
+    type: data.type as any,
+    order: data.order,
+    duration: data.duration,
+    isPreview: data.is_free,
+    videoUrl: data.video_url,
+    attachments,
+    createdAt: new Date(data.created_at),
+    updatedAt: new Date(data.created_at),
+  } as Lesson;
+};
 
 export const courseService = {
   // Course CRUD
@@ -306,13 +343,17 @@ export const courseService = {
 
   // Lessons
   async createLesson(courseId: string, sectionId: string, data: Partial<Lesson>): Promise<Lesson> {
+    // Handle content data - could be string or object
+    const contentData = data.content?.data;
+    const formattedContent = typeof contentData === 'string' ? contentData : (contentData ? JSON.stringify(contentData) : '');
+
     const { data: lesson, error } = await supabase
       .from('lessons')
       .insert({
         course_id: courseId,
         section_id: sectionId,
         title: data.title,
-        content: data.content?.data as string,
+        content: formattedContent,
         type: data.type || 'video',
         order: data.order || 0,
         is_free: data.isPreview || false,
@@ -329,12 +370,16 @@ export const courseService = {
   async updateLesson(_courseId: string, _sectionId: string, lessonId: string, data: Partial<Lesson>): Promise<Lesson> {
     const updates: any = {};
     if (data.title) updates.title = data.title;
-    if (data.content) updates.content = data.content.data;
+    if (data.content) {
+      // Handle content data - could be string or object
+      const contentData = data.content.data;
+      updates.content = typeof contentData === 'string' ? contentData : JSON.stringify(contentData);
+    }
     if (data.type) updates.type = data.type;
     if (data.order !== undefined) updates.order = data.order;
     if (data.isPreview !== undefined) updates.is_free = data.isPreview;
     if (data.duration !== undefined) updates.duration = data.duration;
-    if (data.videoUrl) updates.video_url = data.videoUrl;
+    if (data.videoUrl !== undefined) updates.video_url = data.videoUrl;
 
     const { data: lesson, error } = await supabase
       .from('lessons')

@@ -31,7 +31,7 @@ interface HeaderProps {
 export function Header({ breadcrumbs }: HeaderProps) {
   const navigate = useNavigate();
   const isMobile = useIsMobile();
-  const { setSidebarMobileOpen, sidebarCollapsed, theme, setTheme } = useUIStore();
+  const { setSidebarMobileOpen, theme, setTheme } = useUIStore();
   const { logout, user } = useAuthStore();
   const [searchOpen, setSearchOpen] = React.useState(false);
 

@@ -10,7 +10,6 @@ import {
   Palette,
   Bell,
   Shield,
-  Upload,
   Globe,
   Clock,
 } from 'lucide-react';

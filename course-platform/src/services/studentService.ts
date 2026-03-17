@@ -1,13 +1,7 @@
 import { supabase } from '@/lib/supabase';
 import type { Student, Enrollment, PaginatedResponse, User } from '@/types';
 
-interface StudentFilters {
-  search?: string;
-  courseId?: string;
-  status?: string;
-  sortBy?: string;
-  sortOrder?: 'asc' | 'desc';
-}
+import type { StudentFilters } from '@/types';
 
 interface UpdateStudentData {
   firstName?: string;
@@ -120,6 +114,30 @@ export const studentService = {
     if (error) throw error;
   },
 
+  // Bulk operations
+  async bulkDeleteStudent(ids: string[]): Promise<void> {
+    const { error } = await supabase
+      .from('profiles')
+      .delete()
+      .in('id', ids);
+
+    if (error) throw error;
+  },
+
+  async bulkEnroll(data: { studentIds: string[]; courseId: string }): Promise<void> {
+    const enrollments = data.studentIds.map(studentId => ({
+      user_id: studentId,
+      course_id: data.courseId,
+      status: 'active'
+    }));
+
+    const { error } = await supabase
+      .from('enrollments')
+      .insert(enrollments);
+
+    if (error) throw error;
+  },
+
   // Enrollments
   async getEnrollments(studentId: string): Promise<Enrollment[]> {
     const { data, error } = await supabase
@@ -174,6 +192,18 @@ export const studentService = {
   },
 
   // Statistics
+  async getStudentActivity(_studentId: string): Promise<Array<{
+    id: string;
+    action: string;
+    courseId?: string;
+    lessonId?: string;
+    timestamp: Date;
+    details?: Record<string, any>;
+  }>> {
+    // Placeholder - in a real app, this would query an activity/audit log table
+    return [];
+  },
+
   async getStudentStatistics(): Promise<{
     totalStudents: number;
     activeStudents: number;

@@ -1,4 +1,3 @@
-import React from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -8,21 +7,21 @@ import { Button, Input, Card, CardContent, CardHeader, CardTitle, CardDescriptio
 import { GraduationCap, Mail, Lock, User } from 'lucide-react';
 
 const registerSchema = z.object({
-  firstName: z.string().min(2, 'El nombre debe tener al menos 2 caracteres'),
-  lastName: z.string().min(2, 'El apellido debe tener al menos 2 caracteres'),
-  email: z.string().email('Correo electrónico inválido'),
+  firstName: z.string().min(2, 'First name must be at least 2 characters'),
+  lastName: z.string().min(2, 'Last name must be at least 2 characters'),
+  email: z.string().email('Invalid email address'),
   password: z
     .string()
-    .min(8, 'La contraseña debe tener al menos 8 caracteres')
-    .regex(/[A-Z]/, 'Debe contener al menos una mayúscula')
-    .regex(/[a-z]/, 'Debe contener al menos una minúscula')
-    .regex(/[0-9]/, 'Debe contener al menos un número'),
+    .min(8, 'Password must be at least 8 characters')
+    .regex(/[A-Z]/, 'Must contain at least one uppercase letter')
+    .regex(/[a-z]/, 'Must contain at least one lowercase letter')
+    .regex(/[0-9]/, 'Must contain at least one number'),
   confirmPassword: z.string(),
   acceptTerms: z.boolean().refine((val) => val === true, {
-    message: 'Debes aceptar los términos y condiciones',
+    message: 'You must accept the terms and conditions',
   }),
 }).refine((data) => data.password === data.confirmPassword, {
-  message: 'Las contraseñas no coinciden',
+  message: 'Passwords do not match',
   path: ['confirmPassword'],
 });
 
@@ -69,40 +68,40 @@ export function Register() {
 
         <Card>
           <CardHeader className="space-y-1">
-            <CardTitle className="text-2xl text-center">Crear cuenta</CardTitle>
+            <CardTitle className="text-2xl text-center">Create Account</CardTitle>
             <CardDescription className="text-center">
-              Completa el formulario para comenzar
+              Complete the form to get started
             </CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <Input
-                  label="Nombre"
-                  placeholder="Juan"
+                  label="First Name"
+                  placeholder="John"
                   leftIcon={<User className="h-4 w-4" />}
                   error={errors.firstName?.message}
                   {...register('firstName')}
                 />
                 <Input
-                  label="Apellido"
-                  placeholder="Pérez"
+                  label="Last Name"
+                  placeholder="Doe"
                   error={errors.lastName?.message}
                   {...register('lastName')}
                 />
               </div>
 
               <Input
-                label="Correo electrónico"
+                label="Email"
                 type="email"
-                placeholder="tu@email.com"
+                placeholder="you@company.com"
                 leftIcon={<Mail className="h-4 w-4" />}
                 error={errors.email?.message}
                 {...register('email')}
               />
 
               <Input
-                label="Contraseña"
+                label="Password"
                 type="password"
                 placeholder="••••••••"
                 leftIcon={<Lock className="h-4 w-4" />}
@@ -131,23 +130,23 @@ export function Register() {
                   </div>
                   <ul className="text-xs text-muted-foreground space-y-1">
                     <li className={password.length >= 8 ? 'text-green-600' : ''}>
-                      ✓ Al menos 8 caracteres
+                      ✓ At least 8 characters
                     </li>
                     <li className={/[A-Z]/.test(password) ? 'text-green-600' : ''}>
-                      ✓ Una mayúscula
+                      ✓ One uppercase letter
                     </li>
                     <li className={/[a-z]/.test(password) ? 'text-green-600' : ''}>
-                      ✓ Una minúscula
+                      ✓ One lowercase letter
                     </li>
                     <li className={/[0-9]/.test(password) ? 'text-green-600' : ''}>
-                      ✓ Un número
+                      ✓ One number
                     </li>
                   </ul>
                 </div>
               )}
 
               <Input
-                label="Confirmar contraseña"
+                label="Confirm Password"
                 type="password"
                 placeholder="••••••••"
                 leftIcon={<Lock className="h-4 w-4" />}
@@ -163,13 +162,13 @@ export function Register() {
                     {...register('acceptTerms')}
                   />
                   <span>
-                    Acepto los{' '}
+                    I agree to the{' '}
                     <Link to="/terms" className="text-primary hover:underline">
-                      Términos de servicio
+                      Terms of Service
                     </Link>{' '}
-                    y la{' '}
+                    and{' '}
                     <Link to="/privacy" className="text-primary hover:underline">
-                      Política de privacidad
+                      Privacy Policy
                     </Link>
                   </span>
                 </label>
@@ -183,15 +182,15 @@ export function Register() {
                 className="w-full"
                 loading={isRegistering}
               >
-                Crear cuenta
+                Create Account
               </Button>
             </form>
 
             <div className="mt-6 text-center">
               <p className="text-sm text-muted-foreground">
-                ¿Ya tienes una cuenta?{' '}
+                Already have an account?{' '}
                 <Link to="/login" className="text-primary hover:underline">
-                  Inicia sesión
+                  Sign in
                 </Link>
               </p>
             </div>
